@@ -20,31 +20,12 @@ const app = express();
 // ============================================================
 
 app.use(cors({
-  origin: '*', // بيسمح لكل شي بدون شروط
+  origin: '*', 
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Client-Info', 'Apikey'],
   credentials: true
 }));
 
-const corsOptions = {
-  origin: (origin, callback) => {
-    // Allow requests with no origin (mobile apps, curl, etc.)
-    if (!origin) return callback(null, true);
-
-    if (ALLOWED_ORIGINS.includes(origin)) {
-      callback(null, true);
-    } else {
-      // Log rejected origins for debugging
-      console.warn(`[CORS] Rejected origin: ${origin}`);
-      callback(new Error('Not allowed by CORS'));
-    }
-  },
-  credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Client-Info', 'Apikey'],
-};
-
-app.use(cors(corsOptions));
 app.use(express.json());
 
 // ============================================================
