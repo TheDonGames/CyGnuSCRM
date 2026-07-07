@@ -21,6 +21,7 @@ import {
   formatChangeSummary,
   createRecordLog,
 } from '../utils/helpers';
+import { getApiEndpoint } from '../utils/api';
 
 const STORAGE_KEY = 'crm_pro_state_v2';
 
@@ -470,7 +471,7 @@ export class StateService {
       // If live API is configured, attempt to send
       if (config.phone_number_id && config.access_token) {
         try {
-          const response = await fetch('http://localhost:5001/api/whatsapp/send', {
+          const response = await fetch(getApiEndpoint('/api/whatsapp/send'), {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({

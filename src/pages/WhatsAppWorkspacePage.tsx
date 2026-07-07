@@ -22,6 +22,7 @@ import { useStore } from '../context/StoreContext';
 import { showToast } from '../components/Toast';
 import { useFeedback } from '../components/FeedbackModal';
 import { normalizePhone, formatDateTime } from '../utils/helpers';
+import { getApiEndpoint } from '../utils/api';
 import { supabase } from '../services/supabaseClient';
 import type { RepairRecord, WhatsAppLogRecord, WhatsAppConfigRecord } from '../types';
 
@@ -157,7 +158,7 @@ export function WhatsAppWorkspacePage() {
     if (!selectedLog) return;
     setResending(true);
     try {
-      const response = await fetch('http://localhost:5001/api/whatsapp/resend', {
+      const response = await fetch(getApiEndpoint('/api/whatsapp/resend'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ logId: selectedLog.id }),

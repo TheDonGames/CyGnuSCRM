@@ -23,6 +23,7 @@ import {
 import { useStore } from '../context/StoreContext';
 import { showToast } from '../components/Toast';
 import { isUserActive, formatTimeAgo, getStatusColor, getStatusDotColor } from '../utils/helpers';
+import { getApiEndpoint } from '../utils/api';
 import type { RepairRecord } from '../types';
 
 type TabKey = 'business' | 'users' | 'messaging' | 'integrations';
@@ -661,7 +662,7 @@ function IntegrationsTab() {
     }
     setTesting('WhatsApp');
     try {
-      const response = await fetch('http://localhost:5001/api/whatsapp/test', {
+      const response = await fetch(getApiEndpoint('/api/whatsapp/test'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

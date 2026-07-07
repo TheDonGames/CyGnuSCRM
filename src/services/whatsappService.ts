@@ -9,6 +9,7 @@
  */
 
 import { supabase } from './supabaseClient';
+import { getApiEndpoint } from '../utils/api';
 import type { RepairRecord } from '../types';
 
 // ============================================================
@@ -114,7 +115,7 @@ export async function testWhatsAppConnection(config: {
   access_token: string;
 }): Promise<{ success: boolean; error?: string }> {
   try {
-    const response = await fetch('http://localhost:5001/api/whatsapp/test', {
+    const response = await fetch(getApiEndpoint('/api/whatsapp/test'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(config),
@@ -215,7 +216,7 @@ export async function updateWhatsAppLogStatus(
  */
 export async function resendWhatsAppMessage(logId: string): Promise<{ success: boolean; error?: string }> {
   try {
-    const response = await fetch('http://localhost:5001/api/whatsapp/resend', {
+    const response = await fetch(getApiEndpoint('/api/whatsapp/resend'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ logId }),
@@ -309,7 +310,7 @@ export async function dispatchWhatsAppMessage(
   // If API is enabled, attempt to send
   if (config.enabled && config.phone_number_id && config.access_token) {
     try {
-      const response = await fetch('http://localhost:5001/api/whatsapp/send', {
+      const response = await fetch(getApiEndpoint('/api/whatsapp/send'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
