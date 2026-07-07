@@ -19,8 +19,29 @@ const app = express();
 // Dynamic CORS Configuration
 // ============================================================
 
+// 1. Properly define your allowed origins array
+const ALLOWED_ORIGINS = [
+  process.env.FRONTEND_URL,
+  'http://localhost:3000',
+  'http://localhost:5173'
+].filter(Boolean); // Filters out undefined values if FRONTEND_URL isn't set yet
+
 app.use(cors({
-  origin: '*', 
+  origin: (origin, callback) => {
+    // Allow requests with no origin (like mobile apps, curl, or server-to-server)
+    if (!origin) return callback(null, true);
+    
+    // Allow configured origins, local development, or Webcontainer environments
+    if (
+      ALLOWED_ORIGINS.includes(origin) || 
+      origin.includes('webcontainer-api.io') ||
+      process.env.NODE_ENV !== 'production'
+    ) {
+      return callback(null, true);
+    }
+    
+    return callback(new Error('Not allowed by CORS'));
+  },
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Client-Info', 'Apikey'],
   credentials: true
@@ -208,13 +229,6 @@ app.post('/api/whatsapp/resend', async (req, res) => {
         error: 'logId is required',
       });
     }
-
-    // In a production system, you would fetch the log details from Supabase
-    // For now, we'll expect the client to provide the necessary details
-    // This endpoint is a passthrough to the send endpoint with retry logic
-
-    // The actual log lookup should be done by the frontend
-    // This endpoint serves as a trigger to attempt the resend
 
     res.json({
       success: true,
