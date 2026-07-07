@@ -19,19 +19,12 @@ const app = express();
 // Dynamic CORS Configuration
 // ============================================================
 
-const ALLOWED_ORIGINS = [
-  'http://localhost:5173',
-  'http://localhost:3000',
-  'http://localhost:5001',
-  'http://127.0.0.1:5173',
-  'http://127.0.0.1:3000',
-  'http://127.0.0.1:5001',
-];
-
-// Add production frontend URL from environment
-if (process.env.FRONTEND_URL) {
-  ALLOWED_ORIGINS.push(process.env.FRONTEND_URL);
-}
+app.use(cors({
+  origin: '*', // بيسمح لكل شي بدون شروط
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Client-Info', 'Apikey'],
+  credentials: true
+}));
 
 const corsOptions = {
   origin: (origin, callback) => {
