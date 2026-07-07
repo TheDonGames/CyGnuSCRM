@@ -215,6 +215,39 @@ export interface SystemConfig {
 }
 
 // ============================================================
+// WhatsApp Integration Types
+// ============================================================
+
+export type WhatsAppTemplateName = 'order_received' | 'order_finished' | 'order_cancelled';
+export type WhatsAppLogStatus = 'queued' | 'sent' | 'failed';
+
+export interface WhatsAppConfigRecord {
+  id: number;
+  phone_number_id: string;
+  access_token: string;
+  api_version: string;
+  template_language: string;
+  enabled: boolean;
+  finish_statuses: string[];
+  cancel_statuses: string[];
+  created_at: string;
+  updated_at: string;
+}
+
+export interface WhatsAppLogRecord {
+  id: string;
+  repair_id: string;
+  customer_name: string;
+  phone: string;
+  template_name: WhatsAppTemplateName;
+  variables: string[];
+  status: WhatsAppLogStatus;
+  error_message: string | null;
+  created_at: string;
+  sent_at: string | null;
+}
+
+// ============================================================
 // Aggregate state shape persisted to localStorage / Supabase
 // ============================================================
 

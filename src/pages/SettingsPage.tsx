@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import {
   Building2,
   Users as UsersIcon,
@@ -553,12 +553,50 @@ function IntegrationsTab() {
   const { state, service } = useStore();
   const config = state.config;
 
+  // WhatsApp form with Supabase persistence
   const [waForm, setWaForm] = useState({
-    enabled: config.whatsapp.enabled,
-    api_version: config.whatsapp.api_version,
-    phone_number_id: config.whatsapp.phone_number_id,
-    access_token: config.whatsapp.access_token,
+    enabled: false,
+    api_version: 'v22.0',
+    phone_number_id: '',
+    access_token: '',
+    template_language: 'en_US',
+    finish_statuses: ['Completed', 'Ready'],
+    cancel_statuses: ['Cancelled'],
   });
+  const [waLoading, setWaLoading] = useState(true);
+  const [waSaving, setWaSaving] = useState(false);
+  const [testing, setTesting] = useState<string | null>(null);
+
+  // Load WhatsApp config from Supabase on mount
+  useEffect(() => {
+    const loadConfig = async () => {
+      try {
+        const { data, error } = await (await import('../services/supabaseClient')).supabase
+          .from('whatsapp_config')
+          .select('*')
+          .eq('id', 1)
+          .maybeSingle();
+
+        if (data) {
+          setWaForm({
+            enabled: data.enabled ?? false,
+            api_version: data.api_version ?? 'v22.0',
+            phone_number_id: data.phone_number_id ?? '',
+            access_token: data.access_token ?? '',
+            template_language: data.template_language ?? 'en_US',
+            finish_statuses: data.finish_statuses ?? ['Completed', 'Ready'],
+            cancel_statuses: data.cancel_statuses ?? ['Cancelled'],
+          });
+        }
+      } catch (err) {
+        console.warn('[Settings] Failed to load WhatsApp config:', err);
+      } finally {
+        setWaLoading(false);
+      }
+    };
+    loadConfig();
+  }, []);
+
   const [emailForm, setEmailForm] = useState({
     enabled: config.email.enabled,
     host: config.email.host,
@@ -575,11 +613,74 @@ function IntegrationsTab() {
   const [showWaToken, setShowWaToken] = useState(false);
   const [showEmailPass, setShowEmailPass] = useState(false);
   const [showTgToken, setShowTgToken] = useState(false);
-  const [testing, setTesting] = useState<string | null>(null);
 
-  const handleSaveWhatsApp = () => {
-    service.updateConfig({ whatsapp: { ...config.whatsapp, ...waForm } });
-    showToast('success', 'WhatsApp settings saved');
+  // Save WhatsApp config to Supabase
+  const handleSaveWhatsApp = async () => {
+    setWaSaving(true);
+    try {
+      const { error } = await (await import('../services/supabaseClient')).supabase
+        .from('whatsapp_config')
+        .upsert({
+          id: 1,
+          enabled: waForm.enabled,
+          api_version: waForm.api_version,
+          phone_number_id: waForm.phone_number_id,
+          access_token: waForm.access_token,
+          template_language: waForm.template_language,
+          finish_statuses: waForm.finish_statuses,
+          cancel_statuses: waForm.cancel_statuses,
+          updated_at: new Date().toISOString(),
+        }, { onConflict: 'id' });
+
+      if (error) {
+        showToast('error', `Failed to save: ${error.message}`);
+      } else {
+        // Also sync to local config for backward compatibility
+        service.updateConfig({
+          whatsapp: {
+            enabled: waForm.enabled,
+            api_version: waForm.api_version,
+            phone_number_id: waForm.phone_number_id,
+            access_token: waForm.access_token,
+          },
+        });
+        showToast('success', 'WhatsApp gateway configuration saved');
+      }
+    } catch (err) {
+      showToast('error', `Failed to save: ${err instanceof Error ? err.message : 'Unknown error'}`);
+    } finally {
+      setWaSaving(false);
+    }
+  };
+
+  // Test WhatsApp connection via local backend
+  const handleTestWhatsApp = async () => {
+    if (!waForm.phone_number_id || !waForm.access_token) {
+      showToast('error', 'Enter Phone Number ID and Access Token first');
+      return;
+    }
+    setTesting('WhatsApp');
+    try {
+      const response = await fetch('http://localhost:5001/api/whatsapp/test', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          phone_number_id: waForm.phone_number_id,
+          access_token: waForm.access_token,
+        }),
+      });
+
+      const data = await response.json();
+      if (response.ok && data.success) {
+        showToast('success', 'WhatsApp connection test successful');
+      } else {
+        showToast('error', `Connection failed: ${data.error || 'Unknown error'}`);
+      }
+    } catch (err) {
+      showToast('error', `Connection failed: ${err instanceof Error ? err.message : 'Network error'}`);
+    } finally {
+      setTesting(null);
+    }
   };
 
   const handleSaveEmail = () => {
@@ -593,6 +694,10 @@ function IntegrationsTab() {
   };
 
   const handleTest = (channel: string) => {
+    if (channel === 'WhatsApp') {
+      handleTestWhatsApp();
+      return;
+    }
     setTesting(channel);
     setTimeout(() => {
       setTesting(null);
@@ -626,40 +731,94 @@ function IntegrationsTab() {
           </label>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <div>
-            <label className="label">API Version</label>
-            <input className="input" value={waForm.api_version} onChange={(e) => setWaForm({ ...waForm, api_version: e.target.value })} placeholder="v22.0" />
+        {waLoading ? (
+          <div className="flex items-center justify-center py-8">
+            <RefreshCw className="h-6 w-6 animate-spin text-gray-400" />
           </div>
-          <div>
-            <label className="label">Phone Number ID</label>
-            <input className="input" value={waForm.phone_number_id} onChange={(e) => setWaForm({ ...waForm, phone_number_id: e.target.value })} />
-          </div>
-          <div className="sm:col-span-2">
-            <label className="label">Access Token</label>
-            <div className="relative">
-              <input
-                type={showWaToken ? 'text' : 'password'}
-                className="input pr-10"
-                value={waForm.access_token}
-                onChange={(e) => setWaForm({ ...waForm, access_token: e.target.value })}
-              />
-              <button type="button" onClick={() => setShowWaToken(!showWaToken)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
-                {showWaToken ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+        ) : (
+          <>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label className="label">API Version</label>
+                <input className="input" value={waForm.api_version} onChange={(e) => setWaForm({ ...waForm, api_version: e.target.value })} placeholder="v22.0" />
+              </div>
+              <div>
+                <label className="label">Phone Number ID</label>
+                <input className="input" value={waForm.phone_number_id} onChange={(e) => setWaForm({ ...waForm, phone_number_id: e.target.value })} placeholder="e.g. 107039372694784" />
+              </div>
+              <div className="sm:col-span-2">
+                <label className="label">Cloud Access Token</label>
+                <div className="relative">
+                  <input
+                    type={showWaToken ? 'text' : 'password'}
+                    className="input pr-10 font-mono"
+                    value={waForm.access_token}
+                    onChange={(e) => setWaForm({ ...waForm, access_token: e.target.value })}
+                    placeholder="EAAG..."
+                  />
+                  <button type="button" onClick={() => setShowWaToken(!showWaToken)} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
+                    {showWaToken ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </button>
+                </div>
+                <p className="mt-1 text-xs text-gray-400 dark:text-slate-500">Your secret token - masked by default for security</p>
+              </div>
+              <div>
+                <label className="label">Template Language</label>
+                <select
+                  className="input"
+                  value={waForm.template_language}
+                  onChange={(e) => setWaForm({ ...waForm, template_language: e.target.value })}
+                >
+                  <option value="en_US">English (US)</option>
+                  <option value="en_GB">English (UK)</option>
+                  <option value="ar">Arabic</option>
+                  <option value="fr">French</option>
+                  <option value="es">Spanish</option>
+                </select>
+              </div>
+            </div>
+
+            {/* Status Triggers */}
+            <div className="mt-4 pt-4 border-t border-gray-100 dark:border-slate-800">
+              <p className="text-xs font-semibold text-gray-500 dark:text-slate-400 uppercase tracking-wider mb-3">Status Triggers</p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="rounded-lg bg-emerald-50 dark:bg-emerald-950/20 border border-emerald-100 dark:border-emerald-900/30 p-3">
+                  <p className="text-xs font-semibold text-emerald-700 dark:text-emerald-400 uppercase tracking-wider mb-2">Finish Statuses</p>
+                  <p className="text-xs text-emerald-600/70 dark:text-emerald-400/70 mb-2">Triggers &quot;order_finished&quot; template</p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {waForm.finish_statuses.map((s) => (
+                      <span key={s} className="badge bg-emerald-100 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400">
+                        <CheckCircle2 className="h-3 w-3" /> {s}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+                <div className="rounded-lg bg-red-50 dark:bg-red-950/20 border border-red-100 dark:border-red-900/30 p-3">
+                  <p className="text-xs font-semibold text-red-700 dark:text-red-400 uppercase tracking-wider mb-2">Cancel Statuses</p>
+                  <p className="text-xs text-red-600/70 dark:text-red-400/70 mb-2">Triggers &quot;order_cancelled&quot; template</p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {waForm.cancel_statuses.map((s) => (
+                      <span key={s} className="badge bg-red-100 dark:bg-red-950/40 text-red-700 dark:text-red-400">
+                        <XCircle className="h-3 w-3" /> {s}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="mt-4 flex justify-end gap-2">
+              <button onClick={() => handleTest('WhatsApp')} className="btn-secondary text-sm" disabled={!!testing || !waForm.phone_number_id || !waForm.access_token}>
+                {testing === 'WhatsApp' ? <RefreshCw className="h-3.5 w-3.5 animate-spin" /> : <TestTube className="h-3.5 w-3.5" />}
+                Test Connection
+              </button>
+              <button onClick={handleSaveWhatsApp} className="btn-primary text-sm" disabled={waSaving}>
+                {waSaving ? <RefreshCw className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
+                {waSaving ? 'Saving...' : 'Save Gateway Configurations'}
               </button>
             </div>
-          </div>
-        </div>
-
-        <div className="mt-4 flex justify-end gap-2">
-          <button onClick={() => handleTest('WhatsApp')} className="btn-secondary text-sm" disabled={!!testing}>
-            {testing === 'WhatsApp' ? <RefreshCw className="h-3.5 w-3.5 animate-spin" /> : <TestTube className="h-3.5 w-3.5" />}
-            Test Connection
-          </button>
-          <button onClick={handleSaveWhatsApp} className="btn-primary text-sm">
-            <Save className="h-3.5 w-3.5" /> Save
-          </button>
-        </div>
+          </>
+        )}
       </div>
 
       {/* Email / SMTP */}

@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import {
   MessageCircle,
   Search,
@@ -22,45 +22,20 @@ import { useStore } from '../context/StoreContext';
 import { showToast } from '../components/Toast';
 import { useFeedback } from '../components/FeedbackModal';
 import { normalizePhone, formatDateTime } from '../utils/helpers';
-import type { RepairRecord } from '../types';
-
-// ============================================================
-// Strict Communication Types
-// ============================================================
-
-type WhatsAppTemplate = 'order_received' | 'order_finished' | 'order_cancelled';
-type WhatsAppLogStatus = 'Sent' | 'Delivered' | 'Failed' | 'Queued';
-
-interface WhatsAppLogEntry {
-  id: string;
-  repair_id: string;
-  customer_name: string;
-  phone: string;
-  template_name: WhatsAppTemplate;
-  variables: string[];
-  timestamp: string;
-  status: WhatsAppLogStatus;
-  error_message?: string;
-}
-
-interface WhatsAppConfig {
-  enabled: boolean;
-  phone_number_id: string;
-  access_token: string;
-  template_language: string;
-  finish_statuses: string[];
-  cancel_statuses: string[];
-}
+import { supabase } from '../services/supabaseClient';
+import type { RepairRecord, WhatsAppLogRecord, WhatsAppConfigRecord } from '../types';
 
 // ============================================================
 // Status pill config
 // ============================================================
 
-const STATUS_PILL: Record<WhatsAppLogStatus, { bg: string; text: string; icon: React.ReactNode }> = {
-  Delivered: { bg: 'bg-emerald-50 dark:bg-emerald-950/40', text: 'text-emerald-700 dark:text-emerald-400', icon: <CheckCircle2 className="h-3 w-3" /> },
-  Sent: { bg: 'bg-slate-100 dark:bg-slate-800', text: 'text-slate-600 dark:text-slate-400', icon: <CheckCircle2 className="h-3 w-3" /> },
-  Queued: { bg: 'bg-blue-50 dark:bg-blue-950/40', text: 'text-blue-700 dark:text-blue-400', icon: <Clock className="h-3 w-3" /> },
-  Failed: { bg: 'bg-red-50 dark:bg-red-950/40', text: 'text-red-700 dark:text-red-400', icon: <XCircle className="h-3 w-3" /> },
+type WhatsAppTemplate = 'order_received' | 'order_finished' | 'order_cancelled';
+type WhatsAppLogStatusUI = 'sent' | 'queued' | 'failed';
+
+const STATUS_PILL: Record<WhatsAppLogStatusUI, { bg: string; text: string; icon: React.ReactNode }> = {
+  sent: { bg: 'bg-emerald-50 dark:bg-emerald-950/40', text: 'text-emerald-700 dark:text-emerald-400', icon: <CheckCircle2 className="h-3 w-3" /> },
+  queued: { bg: 'bg-amber-50 dark:bg-amber-950/40', text: 'text-amber-700 dark:text-amber-400', icon: <Clock className="h-3 w-3" /> },
+  failed: { bg: 'bg-red-50 dark:bg-red-950/40', text: 'text-red-700 dark:text-red-400', icon: <XCircle className="h-3 w-3" /> },
 };
 
 const TEMPLATE_LABELS: Record<WhatsAppTemplate, string> = {
@@ -83,121 +58,178 @@ export function WhatsAppWorkspacePage() {
   const [selectedLogId, setSelectedLogId] = useState<string | null>(null);
   const [resending, setResending] = useState(false);
   const [configOpen, setConfigOpen] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [logs, setLogs] = useState<WhatsAppLogRecord[]>([]);
+  const [waConfig, setWaConfig] = useState<WhatsAppConfigRecord | null>(null);
 
-  // ============================================================
-  // Build WhatsApp log entries from notifications
-  // ============================================================
+  // Load WhatsApp config and logs from Supabase
+  useEffect(() => {
+    const loadData = async () => {
+      setLoading(true);
+      try {
+        const [configRes, logsRes] = await Promise.all([
+          supabase.from('whatsapp_config').select('*').eq('id', 1).maybeSingle(),
+          supabase.from('whatsapp_logs').select('*').order('created_at', { ascending: false }).limit(500),
+        ]);
 
-  const logEntries = useMemo<WhatsAppLogEntry[]>(() => {
-    return state.notifications
-      .filter((n) => n.channel === 'whatsapp')
-      .map((n) => {
-        const repair = state.repairs.find((r) => r.repair_id === n.customer_id);
-        let template: WhatsAppTemplate = 'order_received';
-        if (n.title.toLowerCase().includes('ready') || n.title.toLowerCase().includes('finished')) {
-          template = 'order_finished';
-        } else if (n.title.toLowerCase().includes('cancel')) {
-          template = 'order_cancelled';
+        if (configRes.data) {
+          setWaConfig(configRes.data as WhatsAppConfigRecord);
         }
+        if (logsRes.data) {
+          setLogs(logsRes.data.map((row) => ({
+            ...row,
+            variables: Array.isArray(row.variables) ? row.variables : JSON.parse(JSON.stringify(row.variables)),
+          })) as WhatsAppLogRecord[]);
+        }
+      } catch (err) {
+        console.warn('[WhatsAppWorkspace] Failed to load data:', err);
+      } finally {
+        setLoading(false);
+      }
+    };
+    loadData();
+  }, []);
 
-        const statusMap: Record<string, WhatsAppLogStatus> = {
-          sent: 'Sent',
-          queued: 'Queued',
-          failed: 'Failed',
-        };
-        const status = statusMap[n.status] || 'Queued';
+  // Refresh logs
+  const refreshLogs = useCallback(async () => {
+    try {
+      const { data, error } = await supabase
+        .from('whatsapp_logs')
+        .select('*')
+        .order('created_at', { ascending: false })
+        .limit(500);
 
-        const variables = repair
-          ? [
-              repair.customer_name,
-              repair.brand,
-              repair.model,
-              repair.serial,
-              repair.repair_id,
-              repair.status,
-              String(repair.price),
-            ]
-          : [n.recipient, n.customer_id];
+      if (error) {
+        console.warn('[WhatsAppWorkspace] refreshLogs error:', error.message);
+        return;
+      }
 
-        return {
-          id: n.id,
-          repair_id: n.customer_id,
-          customer_name: repair?.customer_name || 'Unknown',
-          phone: n.recipient,
-          template_name: template,
-          variables,
-          timestamp: n.created_at,
-          status,
-          error_message: n.last_error || undefined,
-        };
-      })
-      .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
-  }, [state.notifications, state.repairs]);
+      if (data) {
+        setLogs(data.map((row) => ({
+          ...row,
+          variables: Array.isArray(row.variables) ? row.variables : JSON.parse(JSON.stringify(row.variables)),
+        })) as WhatsAppLogRecord[]);
+      }
+      showToast('success', 'Message logs refreshed');
+    } catch (err) {
+      console.warn('[WhatsAppWorkspace] refreshLogs error:', err);
+    }
+  }, []);
 
   // ============================================================
   // Analytics
   // ============================================================
 
   const analytics = useMemo(() => {
-    const total = logEntries.length;
-    const delivered = logEntries.filter((l) => l.status === 'Delivered' || l.status === 'Sent').length;
-    const failed = logEntries.filter((l) => l.status === 'Failed').length;
-    const successRate = total > 0 ? Math.round((delivered / total) * 100) : 0;
-    return { total, delivered, failed, successRate };
-  }, [logEntries]);
+    const total = logs.length;
+    const sent = logs.filter((l) => l.status === 'sent').length;
+    const failed = logs.filter((l) => l.status === 'failed').length;
+    const successRate = total > 0 ? Math.round((sent / total) * 100) : 0;
+    return { total, sent, failed, successRate };
+  }, [logs]);
 
   // Filtered logs
   const filteredLogs = useMemo(() => {
-    if (!search.trim()) return logEntries;
+    if (!search.trim()) return logs;
     const q = search.toLowerCase();
-    return logEntries.filter(
+    return logs.filter(
       (l) =>
         l.customer_name.toLowerCase().includes(q) ||
         l.phone.includes(q) ||
         l.repair_id.toLowerCase().includes(q)
     );
-  }, [logEntries, search]);
+  }, [logs, search]);
 
   // Selected log entry
   const selectedLog = useMemo(
-    () => logEntries.find((l) => l.id === selectedLogId) || null,
-    [logEntries, selectedLogId]
+    () => logs.find((l) => l.id === selectedLogId) || null,
+    [logs, selectedLogId]
   );
 
   // Config from state
-  const whatsappConfig = state.config.whatsapp;
-  const isApiConnected = whatsappConfig.enabled;
+  const isApiConnected = waConfig?.enabled ?? false;
 
   // ============================================================
   // Handlers
   // ============================================================
 
-  const handleResend = () => {
+  const handleResend = async () => {
     if (!selectedLog) return;
     setResending(true);
-    setTimeout(() => {
+    try {
+      const response = await fetch('http://localhost:5001/api/whatsapp/resend', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ logId: selectedLog.id }),
+      });
+
+      const data = await response.json();
+
+      if (response.ok && data.success) {
+        // Update log status in local state
+        setLogs((prev) =>
+          prev.map((l) =>
+            l.id === selectedLog.id
+              ? { ...l, status: 'sent' as const, sent_at: new Date().toISOString(), error_message: null }
+              : l
+          )
+        );
+        // Update in Supabase
+        await supabase
+          .from('whatsapp_logs')
+          .update({ status: 'sent', sent_at: new Date().toISOString(), error_message: null })
+          .eq('id', selectedLog.id);
+        showToast('success', `Message resent to ${selectedLog.customer_name} (${selectedLog.repair_id})`);
+      } else {
+        // Update log status to failed
+        const errorMsg = data.error || 'Resend failed';
+        setLogs((prev) =>
+          prev.map((l) =>
+            l.id === selectedLog.id
+              ? { ...l, status: 'failed' as const, error_message: errorMsg }
+              : l
+          )
+        );
+        await supabase
+          .from('whatsapp_logs')
+          .update({ status: 'failed', error_message: errorMsg })
+          .eq('id', selectedLog.id);
+        showToast('error', `Failed to resend: ${errorMsg}`);
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Network error';
+      showToast('error', `Failed to resend: ${message}`);
+    } finally {
       setResending(false);
-      showToast('success', `Message resent to ${selectedLog.customer_name} (${selectedLog.repair_id})`);
-    }, 400);
+    }
   };
 
-  const handleSaveConfig = (config: WhatsAppConfig) => {
+  const handleSaveConfig = async (config: Partial<WhatsAppConfigRecord>) => {
     showFeedback({
       type: 'confirm',
       title: 'Save Gateway Configurations',
       message: 'Are you sure you want to commit these WhatsApp Cloud API configuration changes? This will update the live gateway settings.',
       confirmLabel: 'Save Changes',
-      onConfirm: () => {
-        service.updateConfig({
-          whatsapp: {
-            enabled: config.enabled,
-            phone_number_id: config.phone_number_id,
-            access_token: config.access_token,
-            api_version: state.config.whatsapp.api_version,
-          },
-        });
-        showToast('success', 'WhatsApp gateway configuration saved');
-        setConfigOpen(false);
+      onConfirm: async () => {
+        try {
+          const { error } = await supabase
+            .from('whatsapp_config')
+            .upsert({
+              id: 1,
+              ...config,
+              updated_at: new Date().toISOString(),
+            }, { onConflict: 'id' });
+
+          if (error) {
+            showToast('error', `Failed to save: ${error.message}`);
+          } else {
+            setWaConfig((prev) => prev ? { ...prev, ...config } : null);
+            showToast('success', 'WhatsApp gateway configuration saved');
+            setConfigOpen(false);
+          }
+        } catch (err) {
+          showToast('error', `Failed to save: ${err instanceof Error ? err.message : 'Unknown error'}`);
+        }
       },
     });
   };
@@ -213,14 +245,20 @@ export function WhatsAppWorkspacePage() {
         <div>
           <h1 className="text-2xl font-bold text-gray-900 dark:text-slate-100">WhatsApp Workspace</h1>
           <p className="mt-1 text-sm text-gray-500 dark:text-slate-400">
-            Communications center · Message log monitoring & Meta Cloud API gateway
+            Communications center - Message log monitoring & Meta Cloud API gateway
           </p>
         </div>
-        {isAdmin && (
-          <button onClick={() => setConfigOpen(true)} className="btn-secondary">
-            <Settings className="h-4 w-4" /> Gateway Config
+        <div className="flex items-center gap-2">
+          <button onClick={refreshLogs} className="btn-secondary text-sm" disabled={loading}>
+            <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
+            Refresh
           </button>
-        )}
+          {isAdmin && (
+            <button onClick={() => setConfigOpen(true)} className="btn-secondary">
+              <Settings className="h-4 w-4" /> Gateway Config
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Cloud Sync Status Ribbon */}
@@ -248,8 +286,8 @@ export function WhatsAppWorkspacePage() {
           </div>
           <p className="text-xs text-gray-500 dark:text-slate-400 mt-0.5">
             {isApiConnected
-              ? `Phone Number ID: ${whatsappConfig.phone_number_id || 'Not configured'} · API v${whatsappConfig.api_version}`
-              : 'Live API disabled — messages simulated locally for testing'}
+              ? `Phone Number ID: ${waConfig?.phone_number_id || 'Not configured'} - API v${waConfig?.api_version || '22.0'}`
+              : 'Live API disabled - messages simulated locally for testing'}
           </p>
         </div>
       </div>
@@ -273,7 +311,7 @@ export function WhatsAppWorkspacePage() {
             <div>
               <p className="text-sm font-medium text-gray-500 dark:text-slate-400">Delivery Success Rate</p>
               <p className="mt-2 text-3xl font-bold text-emerald-600">{analytics.successRate}%</p>
-              <p className="mt-1 text-xs text-gray-400 dark:text-slate-500">{analytics.delivered} successful dispatches</p>
+              <p className="mt-1 text-xs text-gray-400 dark:text-slate-500">{analytics.sent} successful dispatches</p>
             </div>
             <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-emerald-50 dark:bg-emerald-950/20 text-emerald-600 dark:text-emerald-400">
               <CheckCircle2 className="h-5 w-5" />
@@ -321,63 +359,69 @@ export function WhatsAppWorkspacePage() {
 
           {/* Table */}
           <div className="overflow-x-auto max-h-[600px] overflow-y-auto">
-            <table className="w-full">
-              <thead className="sticky top-0 bg-gray-50 dark:bg-[#0b0f19] border-b border-gray-200 dark:border-slate-800 z-10">
-                <tr>
-                  <th className="px-3 py-2.5 text-left text-xs font-bold text-gray-500 dark:text-slate-400 uppercase tracking-wider">Message ID</th>
-                  <th className="px-3 py-2.5 text-left text-xs font-bold text-gray-500 dark:text-slate-400 uppercase tracking-wider">Repair ID</th>
-                  <th className="px-3 py-2.5 text-left text-xs font-bold text-gray-500 dark:text-slate-400 uppercase tracking-wider">Customer</th>
-                  <th className="px-3 py-2.5 text-left text-xs font-bold text-gray-500 dark:text-slate-400 uppercase tracking-wider">Template</th>
-                  <th className="px-3 py-2.5 text-left text-xs font-bold text-gray-500 dark:text-slate-400 uppercase tracking-wider">Dispatched</th>
-                  <th className="px-3 py-2.5 text-left text-xs font-bold text-gray-500 dark:text-slate-400 uppercase tracking-wider">Status</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filteredLogs.length === 0 ? (
+            {loading ? (
+              <div className="flex items-center justify-center py-16">
+                <RefreshCw className="h-8 w-8 animate-spin text-gray-400" />
+              </div>
+            ) : (
+              <table className="w-full">
+                <thead className="sticky top-0 bg-gray-50 dark:bg-[#0b0f19] border-b border-gray-200 dark:border-slate-800 z-10">
                   <tr>
-                    <td colSpan={6} className="py-16">
-                      <div className="flex flex-col items-center justify-center text-center">
-                        <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-gray-100 dark:bg-slate-800 text-gray-300 dark:text-slate-600 mb-4">
-                          <Inbox className="h-8 w-8" />
-                        </div>
-                        <p className="text-sm font-medium text-gray-700 dark:text-slate-300">No message logs found</p>
-                        <p className="text-xs text-gray-400 dark:text-slate-500 mt-1">Try adjusting your search query</p>
-                      </div>
-                    </td>
+                    <th className="px-3 py-2.5 text-left text-xs font-bold text-gray-500 dark:text-slate-400 uppercase tracking-wider">Message ID</th>
+                    <th className="px-3 py-2.5 text-left text-xs font-bold text-gray-500 dark:text-slate-400 uppercase tracking-wider">Repair ID</th>
+                    <th className="px-3 py-2.5 text-left text-xs font-bold text-gray-500 dark:text-slate-400 uppercase tracking-wider">Customer</th>
+                    <th className="px-3 py-2.5 text-left text-xs font-bold text-gray-500 dark:text-slate-400 uppercase tracking-wider">Template</th>
+                    <th className="px-3 py-2.5 text-left text-xs font-bold text-gray-500 dark:text-slate-400 uppercase tracking-wider">Dispatched</th>
+                    <th className="px-3 py-2.5 text-left text-xs font-bold text-gray-500 dark:text-slate-400 uppercase tracking-wider">Status</th>
                   </tr>
-                ) : (
-                  filteredLogs.map((log, i) => {
-                    const pill = STATUS_PILL[log.status];
-                    const isSelected = log.id === selectedLogId;
-                    return (
-                      <tr
-                        key={log.id}
-                        onClick={() => setSelectedLogId(log.id)}
-                        className={`border-b border-gray-100 dark:border-slate-800 transition-colors cursor-pointer animate-slide-up ${
-                          isSelected ? 'bg-brand-50 dark:bg-brand-950/20' : i % 2 === 0 ? 'bg-white dark:bg-[#131b2e] hover:bg-gray-50 dark:hover:bg-slate-800/50' : 'bg-gray-50/30 dark:bg-slate-800/10 hover:bg-gray-50 dark:hover:bg-slate-800/50'
-                        }`}
-                        style={{ animationDelay: `${i * 20}ms` }}
-                      >
-                        <td className="px-3 py-3 text-xs font-mono text-gray-500 dark:text-slate-500 truncate max-w-[100px]">{log.id.substring(0, 12)}...</td>
-                        <td className="px-3 py-3 text-sm font-mono text-brand-600 dark:text-brand-400 font-medium">{log.repair_id}</td>
-                        <td className="px-3 py-3">
-                          <p className="text-sm font-medium text-gray-900 dark:text-slate-100 truncate max-w-[120px]">{log.customer_name}</p>
-                          <p className="text-xs text-gray-400 dark:text-slate-500 font-mono">{normalizePhone(log.phone)}</p>
-                        </td>
-                        <td className="px-3 py-3 text-sm text-gray-600 dark:text-slate-400">{TEMPLATE_LABELS[log.template_name]}</td>
-                        <td className="px-3 py-3 text-xs text-gray-500 dark:text-slate-400">{formatDateTime(log.timestamp)}</td>
-                        <td className="px-3 py-3">
-                          <span className={`inline-flex items-center gap-1 rounded-full ${pill.bg} ${pill.text} px-2.5 py-0.5 text-xs font-medium`}>
-                            {pill.icon}
-                            {log.status}
-                          </span>
-                        </td>
-                      </tr>
-                    );
-                  })
-                )}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {filteredLogs.length === 0 ? (
+                    <tr>
+                      <td colSpan={6} className="py-16">
+                        <div className="flex flex-col items-center justify-center text-center">
+                          <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-gray-100 dark:bg-slate-800 text-gray-300 dark:text-slate-600 mb-4">
+                            <Inbox className="h-8 w-8" />
+                          </div>
+                          <p className="text-sm font-medium text-gray-700 dark:text-slate-300">No message logs found</p>
+                          <p className="text-xs text-gray-400 dark:text-slate-500 mt-1">Messages will appear here when repair status changes trigger notifications</p>
+                        </div>
+                      </td>
+                    </tr>
+                  ) : (
+                    filteredLogs.map((log, i) => {
+                      const pill = STATUS_PILL[log.status as WhatsAppLogStatusUI];
+                      const isSelected = log.id === selectedLogId;
+                      return (
+                        <tr
+                          key={log.id}
+                          onClick={() => setSelectedLogId(log.id)}
+                          className={`border-b border-gray-100 dark:border-slate-800 transition-colors cursor-pointer animate-slide-up ${
+                            isSelected ? 'bg-brand-50 dark:bg-brand-950/20' : i % 2 === 0 ? 'bg-white dark:bg-[#131b2e] hover:bg-gray-50 dark:hover:bg-slate-800/50' : 'bg-gray-50/30 dark:bg-slate-800/10 hover:bg-gray-50 dark:hover:bg-slate-800/50'
+                          }`}
+                          style={{ animationDelay: `${i * 20}ms` }}
+                        >
+                          <td className="px-3 py-3 text-xs font-mono text-gray-500 dark:text-slate-500 truncate max-w-[100px]">{log.id.substring(0, 12)}...</td>
+                          <td className="px-3 py-3 text-sm font-mono text-brand-600 dark:text-brand-400 font-medium">{log.repair_id}</td>
+                          <td className="px-3 py-3">
+                            <p className="text-sm font-medium text-gray-900 dark:text-slate-100 truncate max-w-[120px]">{log.customer_name}</p>
+                            <p className="text-xs text-gray-400 dark:text-slate-500 font-mono">{normalizePhone(log.phone)}</p>
+                          </td>
+                          <td className="px-3 py-3 text-sm text-gray-600 dark:text-slate-400">{TEMPLATE_LABELS[log.template_name as WhatsAppTemplate]}</td>
+                          <td className="px-3 py-3 text-xs text-gray-500 dark:text-slate-400">{formatDateTime(log.created_at)}</td>
+                          <td className="px-3 py-3">
+                            <span className={`inline-flex items-center gap-1 rounded-full ${pill.bg} ${pill.text} px-2.5 py-0.5 text-xs font-medium capitalize`}>
+                              {pill.icon}
+                              {log.status}
+                            </span>
+                          </td>
+                        </tr>
+                      );
+                    })
+                  )}
+                </tbody>
+              </table>
+            )}
           </div>
         </div>
 
@@ -405,16 +449,9 @@ export function WhatsAppWorkspacePage() {
       </div>
 
       {/* Config Drawer */}
-      {configOpen && (
+      {configOpen && waConfig && (
         <ConfigDrawer
-          config={{
-            enabled: whatsappConfig.enabled,
-            phone_number_id: whatsappConfig.phone_number_id,
-            access_token: whatsappConfig.access_token,
-            template_language: 'en_US',
-            finish_statuses: state.config.flow_statuses.finish_statuses,
-            cancel_statuses: state.config.flow_statuses.cancel_statuses,
-          }}
+          config={waConfig}
           onSave={handleSaveConfig}
           onClose={() => setConfigOpen(false)}
         />
@@ -424,11 +461,11 @@ export function WhatsAppWorkspacePage() {
 }
 
 // ============================================================
-// Template Preview Panel — iPhone-style bubble
+// Template Preview Panel - iPhone-style bubble
 // ============================================================
 
 interface TemplatePreviewPanelProps {
-  log: WhatsAppLogEntry;
+  log: WhatsAppLogRecord;
   repair: RepairRecord | undefined;
   resending: boolean;
   onResend: () => void;
@@ -436,14 +473,14 @@ interface TemplatePreviewPanelProps {
 
 function TemplatePreviewPanel({ log, repair, resending, onResend }: TemplatePreviewPanelProps) {
   const templateContent = useMemo(() => {
-    if (!repair) return 'Message content unavailable — repair record not found.';
-    const v = log.variables;
+    if (!repair) return 'Message content unavailable - repair record not found.';
+    const v = Array.isArray(log.variables) ? log.variables : JSON.parse(JSON.stringify(log.variables));
     if (log.template_name === 'order_received') {
-      return `Hello ${v[0] || repair.customer_name},\n\nWe've received your device for repair:\n\n📱 Brand: ${v[1] || repair.brand}\n📋 Model: ${v[2] || repair.model}\n🔑 Serial: ${v[3] || repair.serial}\n🆔 Repair ID: ${v[4] || repair.repair_id}\n📊 Status: ${v[5] || repair.status}\n\nWe'll keep you updated on the progress. Thank you for choosing our service!`;
+      return `Hello ${v[0] || repair.customer_name},\n\nWe've received your device for repair:\n\nBrand: ${v[1] || repair.brand}\nModel: ${v[2] || repair.model}\nSerial: ${v[3] || repair.serial}\nRepair ID: ${v[4] || repair.repair_id}\nStatus: ${v[5] || repair.status}\n\nWe'll keep you updated on the progress. Thank you for choosing our service!`;
     }
     if (log.template_name === 'order_finished') {
       const fee = v[6] || String(repair.price);
-      return `Hello ${v[0] || repair.customer_name},\n\nGreat news! Your repair is complete:\n\n📱 Brand: ${v[1] || repair.brand}\n📋 Model: ${v[2] || repair.model}\n🔑 Serial: ${v[3] || repair.serial}\n🆔 Repair ID: ${v[4] || repair.repair_id}\n📊 Status: ${v[5] || repair.status}\n💰 Final Fee: ${fee} USD\n\nPlease visit us to pick up your device. Thank you!`;
+      return `Hello ${v[0] || repair.customer_name},\n\nGreat news! Your repair is complete:\n\nBrand: ${v[1] || repair.brand}\nModel: ${v[2] || repair.model}\nSerial: ${v[3] || repair.serial}\nRepair ID: ${v[4] || repair.repair_id}\nStatus: ${v[5] || repair.status}\nFinal Fee: ${fee} USD\n\nPlease visit us to pick up your device. Thank you!`;
     }
     return `Hello ${v[0] || repair.customer_name},\n\nYour repair order ${v[4] || repair.repair_id} has been cancelled.\n\nIf you have questions, please contact us.\n\nThank you.`;
   }, [log, repair]);
@@ -456,7 +493,7 @@ function TemplatePreviewPanel({ log, repair, resending, onResend }: TemplatePrev
           <MessageCircle className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
           <h3 className="text-sm font-semibold text-gray-900 dark:text-slate-100">Template Preview</h3>
         </div>
-        <span className="text-xs text-gray-400 dark:text-slate-500 font-mono">{TEMPLATE_LABELS[log.template_name]}</span>
+        <span className="text-xs text-gray-400 dark:text-slate-500 font-mono">{TEMPLATE_LABELS[log.template_name as WhatsAppTemplate]}</span>
       </div>
 
       {/* Phone mockup */}
@@ -480,10 +517,10 @@ function TemplatePreviewPanel({ log, repair, resending, onResend }: TemplatePrev
               <div className="relative rounded-lg bg-[#DCF8C6] px-3 py-2 shadow-sm max-w-[90%]">
                 <p className="text-xs text-gray-800 whitespace-pre-line leading-relaxed">{templateContent}</p>
                 <div className="flex items-center justify-end gap-1 mt-1">
-                  <span className="text-[10px] text-gray-400">{new Date(log.timestamp).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}</span>
-                  {log.status === 'Delivered' || log.status === 'Sent' ? (
+                  <span className="text-[10px] text-gray-400">{new Date(log.created_at).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}</span>
+                  {log.status === 'sent' ? (
                     <CheckCircle2 className="h-3 w-3 text-blue-500" />
-                  ) : log.status === 'Failed' ? (
+                  ) : log.status === 'failed' ? (
                     <XCircle className="h-3 w-3 text-red-500" />
                   ) : (
                     <Clock className="h-3 w-3 text-gray-400" />
@@ -509,15 +546,15 @@ function TemplatePreviewPanel({ log, repair, resending, onResend }: TemplatePrev
           <span className="font-medium">Template:</span>
           <code className="rounded bg-gray-100 dark:bg-slate-800 px-1.5 py-0.5 text-gray-600 dark:text-slate-300">{log.template_name}</code>
           <ArrowRight className="h-3 w-3" />
-          <span>{log.variables.length} variables injected</span>
+          <span>{Array.isArray(log.variables) ? log.variables.length : 0} variables injected</span>
         </div>
         <button
           onClick={onResend}
-          disabled={resending}
-          className="w-full flex items-center justify-center gap-2 rounded-lg bg-emerald-600 px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-emerald-700 disabled:opacity-60"
+          disabled={resending || log.status === 'sent'}
+          className="w-full flex items-center justify-center gap-2 rounded-lg bg-emerald-600 px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-emerald-700 disabled:opacity-60 disabled:cursor-not-allowed"
         >
           {resending ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-          {resending ? 'Dispatching...' : 'Resend Message Trigger'}
+          {resending ? 'Dispatching...' : log.status === 'sent' ? 'Already Sent' : 'Resend Message Trigger'}
         </button>
       </div>
     </div>
@@ -529,13 +566,21 @@ function TemplatePreviewPanel({ log, repair, resending, onResend }: TemplatePrev
 // ============================================================
 
 interface ConfigDrawerProps {
-  config: WhatsAppConfig;
-  onSave: (config: WhatsAppConfig) => void;
+  config: WhatsAppConfigRecord;
+  onSave: (config: Partial<WhatsAppConfigRecord>) => void;
   onClose: () => void;
 }
 
 function ConfigDrawer({ config, onSave, onClose }: ConfigDrawerProps) {
-  const [form, setForm] = useState<WhatsAppConfig>(config);
+  const [form, setForm] = useState({
+    enabled: config.enabled,
+    phone_number_id: config.phone_number_id,
+    access_token: config.access_token,
+    api_version: config.api_version,
+    template_language: config.template_language,
+    finish_statuses: config.finish_statuses,
+    cancel_statuses: config.cancel_statuses,
+  });
   const [showToken, setShowToken] = useState(false);
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -616,7 +661,7 @@ function ConfigDrawer({ config, onSave, onClose }: ConfigDrawerProps) {
                 {showToken ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
               </button>
             </div>
-            <p className="mt-1 text-xs text-gray-400 dark:text-slate-500">Your secret token — masked by default for security</p>
+            <p className="mt-1 text-xs text-gray-400 dark:text-slate-500">Your secret token - masked by default for security</p>
           </div>
 
           {/* Template Language */}
@@ -667,4 +712,3 @@ function ConfigDrawer({ config, onSave, onClose }: ConfigDrawerProps) {
     </div>
   );
 }
-

@@ -348,7 +348,7 @@ export class StateService {
       logs.push(createRecordLog(newRec.repair_id, actor?.username || 'system', 'UPDATE', details));
     }
 
-    // Check for status change → trigger auto-notify rules
+    // Check for status change -> trigger auto-notify rules
     const statusChange = changes.find((c) => c.field === 'status');
     const newNotifications: NotificationOutbox[] = [];
 
@@ -385,6 +385,9 @@ export class StateService {
           sent_at: null,
         });
       }
+
+      // Trigger WhatsApp message dispatch based on WhatsApp config status triggers
+      this.dispatchWhatsAppOnStatusChange(newRec, statusChange.newValue);
     }
 
     this.setState((prev) => ({
@@ -407,6 +410,107 @@ export class StateService {
           ]
         : prev.activities,
     }));
+  }
+
+  /**
+   * Dispatch WhatsApp message when repair status matches configured triggers.
+   * Loads config from Supabase and creates log entry.
+   */
+  private async dispatchWhatsAppOnStatusChange(repair: RepairRecord, newStatus: string): Promise<void> {
+    try {
+      const { supabase } = await import('./supabaseClient');
+
+      // Load WhatsApp config
+      const { data: config, error } = await supabase
+        .from('whatsapp_config')
+        .select('*')
+        .eq('id', 1)
+        .maybeSingle();
+
+      if (error || !config || !config.enabled) {
+        return; // WhatsApp not enabled or error loading config
+      }
+
+      // Determine template based on status
+      let templateName: 'order_finished' | 'order_cancelled' | null = null;
+      if (config.finish_statuses?.includes(newStatus)) {
+        templateName = 'order_finished';
+      } else if (config.cancel_statuses?.includes(newStatus)) {
+        templateName = 'order_cancelled';
+      }
+
+      if (!templateName || !repair.phone) {
+        return; // No matching template or no phone number
+      }
+
+      // Generate log ID and variables
+      const logId = `wa_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+      const variables = [
+        repair.customer_name,
+        repair.brand,
+        repair.model,
+        repair.serial || '',
+        repair.repair_id,
+        repair.status,
+        String(repair.price),
+      ];
+
+      // Create log entry with 'queued' status
+      await supabase.from('whatsapp_logs').insert({
+        id: logId,
+        repair_id: repair.repair_id,
+        customer_name: repair.customer_name,
+        phone: repair.phone,
+        template_name: templateName,
+        variables,
+        status: 'queued',
+        created_at: nowISO(),
+      });
+
+      // If live API is configured, attempt to send
+      if (config.phone_number_id && config.access_token) {
+        try {
+          const response = await fetch('http://localhost:5001/api/whatsapp/send', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              logId,
+              phone: repair.phone,
+              template: templateName,
+              language: config.template_language || 'en_US',
+              variables,
+              config: {
+                phone_number_id: config.phone_number_id,
+                access_token: config.access_token,
+                api_version: config.api_version || 'v22.0',
+              },
+            }),
+          });
+
+          const data = await response.json();
+
+          if (response.ok && data.success) {
+            await supabase
+              .from('whatsapp_logs')
+              .update({ status: 'sent', sent_at: nowISO() })
+              .eq('id', logId);
+          } else {
+            await supabase
+              .from('whatsapp_logs')
+              .update({ status: 'failed', error_message: data.error || 'API error' })
+              .eq('id', logId);
+          }
+        } catch (err) {
+          const message = err instanceof Error ? err.message : 'Network error';
+          await supabase
+            .from('whatsapp_logs')
+            .update({ status: 'failed', error_message: message })
+            .eq('id', logId);
+        }
+      }
+    } catch (err) {
+      console.warn('[stateService] dispatchWhatsAppOnStatusChange error:', err);
+    }
   }
 
   deleteRepair(id: string): void {
