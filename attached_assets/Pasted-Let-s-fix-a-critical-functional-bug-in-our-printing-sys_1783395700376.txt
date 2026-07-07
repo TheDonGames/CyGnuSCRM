@@ -1,0 +1,28 @@
+Let's fix a critical functional bug in our printing system. Currently, all documents display perfectly in the on-screen Print Preview layout, but when clicking the native browser "Print" button, the system prints everything onto a default A4 sheet size. The printer driver ignores the actual layout dimensions of the labels and receipts. 
+
+Please modify the print execution block (inside DocumentPreviewModal.tsx or your global print script) to dynamically inject targeted CSS @page rules right before running the browser window print command.
+
+Apply these exact dimensions and styling constraints:
+
+1. ENFORCE DYNAMIC CSS @PAGE SIZES PER TEMPLATE
+When a user triggers the print execution, evaluate the active document template type and apply these explicit page dimension styles using a dynamic style tag injected into the print context:
+
+- For "Print Label" (80x20mm):
+  @page { size: 80mm 20mm; margin: 0; }
+  body { width: 80mm; height: 20mm; margin: 0; padding: 0; }
+
+- For Receipts ("Deposit Receipt", "Standard Retail Receipt", "Corporate Receipt"):
+  @page { size: 80mm auto; margin: 0; }
+  body { width: 80mm; margin: 0; padding: 4mm; }
+
+- For "Final Commercial Invoice":
+  @page { size: A4; margin: 15mm; }
+  body { width: auto; margin: 0; }
+
+2. PREVENT LAYOUT CLIPPING AND TEXT STRETCHING
+- For the 80x20mm label template, wrap the barcode element and sequential text cleanly. Enforce 'overflow-hidden' and zero out any default layout paddings that could push content out of the printable 20mm boundary.
+- For thermal receipt types (80mm width), use 'whitespace-normal' and flexible column spacing so text blocks break perfectly and wrap rather than pushing components off the narrow edge of the tape layout.
+
+3. CLEAN EXECUTION WORKFLOW
+- Ensure that if you are using a hidden print iframe or temporary stylesheet injection to isolate printable content, these layout dimension styles are appended cleanly before calling the print window.
+- Ensure the print styles tear down cleanly right after execution finishes so it doesn't accidentally interfere with the primary dashboard display layouts.

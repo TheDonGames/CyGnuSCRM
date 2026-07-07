@@ -1,0 +1,60 @@
+D:.
+│   .gitignore
+│   eslint.config.js
+│   index.html
+│   package-lock.json
+│   package.json
+│   postcss.config.js
+│   tailwind.config.js
+│   tsconfig.app.json
+│   tsconfig.json
+│   tsconfig.node.json
+│   vite.config.ts
+│
+└───src
+    │   App.tsx
+    │   index.css
+    │   main.tsx
+    │   vite-env.d.ts
+    │
+    ├───components
+    │       DocumentPreviewModal.tsx
+    │       FeedbackModal.tsx
+    │       Layout.tsx
+    │       Modal.tsx
+    │       PlaceholderPage.tsx
+    │       ProtectedRoute.tsx
+    │       RepairDetailModal.tsx
+    │       RepairDrawer.tsx
+    │       RepairFormModal.tsx
+    │       Toast.tsx
+    │
+    ├───context
+    │       StoreContext.tsx
+    │
+    ├───data
+    │       seed.ts
+    │
+    ├───pages
+    │       ActivityPage.tsx
+    │       AutomationRulesPage.tsx
+    │       DashboardPage.tsx
+    │       LoginPage.tsx
+    │       LogsPage.tsx
+    │       NotificationsPage.tsx
+    │       ProfilesPage.tsx
+    │       RepairsPage.tsx
+    │       RulesPage.tsx
+    │       SettingsPage.tsx
+    │       UsersPage.tsx
+    │       WhatsAppWorkspacePage.tsx
+    │
+    ├───services
+    │       automationEngine.ts
+    │       stateService.ts
+    │
+    ├───types
+    │       index.ts
+    │
+    └───utils
+            helper.ts

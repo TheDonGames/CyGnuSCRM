@@ -1,0 +1,28 @@
+Please look at "image_c2cea0.png" and "image_c2ce7f.png" to refactor and polish the UI/UX of the dashboard and sidebar/taskbar. The goal is to make it look highly professional, high-density, and optimized for fast daily operations (عملية). 
+
+Please implement the following changes:
+
+1. FIX THE METRICS GRID LAYOUT
+- Currently, the 4-column layout forces the "Pending Amount" card to sit alone on a second row, leaving an awkward blank space.
+- Change the metrics layout wrapper to a clean, uniform 5-column grid on desktop screens so that all 5 cards (Total Records, In Repair, Ready For Pickup, Delivered Revenue, Pending Amount) sit perfectly inline on a single row.
+
+2. ALIGN & REFACTOR THE PRIMARY ACTION BAR
+- The "Intake New Asset" button currently looks like an empty state dropzone due to its dashed border. Change this to a solid, professional primary Call-to-Action (CTA) button matching our brand's primary blue.
+- Ensure that the vertical height of the "Intake New Asset" button perfectly matches the height of the "Type or scan a Repair ID..." search input field next to it.
+- In the search bar placeholder text, append a subtle keyboard shortcut hint, e.g., "Type or scan a Repair ID... [Ctrl + /]" to make it feel like a professional system.
+
+3. CLEAN UP THE HEADER ACTIONS
+- The "Print Preview: Invoice · Receipt · Label" links look like raw HTML text. Group these three options into an elegant, unified segmented button group or a clean bordered control component.
+- Move the "Last Verified" timestamp to sit in a smaller, muted font directly underneath the "Refresh" button. Make the "Sync Data Engine" button less visually dominant (perhaps a secondary outline button or an icon button).
+
+4. SIDEBAR & TASKBAR REFINEMENTS
+- Under the "Communications" section, the "1 ACTIVE NOW" session logs (admin, jsmith, mlee) look cluttered. Clean this up by reducing the vertical padding and adding a small status indicator dot or compact profile initials avatar next to each username.
+- Ensure consistent hover states across all navigation items in the sidebar.
+
+5. REMOVE DEVELOPER REMNANTS
+- Completely remove the fixed bottom footer status bar showing the internal database IP address ("Database Status: Connected to 192.168.1.9..."). Exposing internal connection paths looks unpolished.
+- Instead, take that network connectivity state and place a subtle green pulsing status dot inside the top header or right next to the "CyGnuS SARL" brand logo in the sidebar.
+
+6. TABLE DENSITY & HOVER STATES (image_c2ce7f.png)
+- Tighten up the vertical padding slightly on the "Recent Repairs" and "Recent Activity" cards to allow more information to be visible above the fold.
+- Add a smooth background hover transition to rows in the "Recent Repairs" table so users can easily track their mouse cursor across the screen.

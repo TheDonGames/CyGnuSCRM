@@ -1,0 +1,41 @@
+We are doing an absolute, zero-tolerance dark mode theme overhaul across the ENTIRE codebase. You must not stop after modifying a few files; you are required to open, inspect, and fully refactor every single page, view, and component folder in this repository. 
+
+As clearly seen on the Warranty Status page, components are completely broken—blinding white cards, white text inputs, and light table rows are clashing with the background. You must systematically crawl the entire project and enforce our premium slate dark mode specification across ALL elements.
+
+1. THE UNCOMPROMISING COLOR TOKENS (APPLY GLOBALLY)
+- App Canvas Background: Everywhere a standard page or layout background exists, it must be dark slate-950: `dark:bg-[#0b0f19]`.
+- All Content Cards & Panels: Every single metric block, summary card, data grid, filter container, wrapper, and the sliding drawer panel must use the elevated slate-900 shade: `dark:bg-[#131b2e]`.
+- All Borders & Horizontal Lines: Completely remove stark white or heavy borders. Replace them with muted dividers: `dark:border-slate-800` or `dark:border-slate-700/40`.
+- Balanced Typography: Eliminate blinding pure white text bloom. Use soft off-white (`dark:text-slate-100`) for main titles, numbers, and headers. Use a clean, legible blue-gray (`dark:text-slate-400`) for labels, secondary text, and timestamps.
+
+2. MANDATORY CHECKLIST — REFRACTOR THESE 14 SPECIFIC VIEWS:
+Open and rewrite the Tailwind dark mode properties for every one of these routing paths and their nested child modules:
+1. Dashboard View (All 5 KPI counters and performance modules)
+2. Repairs / Tickets View (The entire tracking table, inline cells, and action menus)
+3. Customer Profiles View (Client listings, contact grids, and detail sheets)
+4. Devices View (Hardware profiles, device status logs, and inventory ties)
+5. Invoices Hub (Billing records, expense sheets, and statement lists)
+6. Warranty Status Control (As seen in image_ec1caa.png, fix the white metrics cards, white search wrapper, and white table rows immediately!)
+7. Inventory / Stock View (Spare parts tables, SKU data cells, low stock counters)
+8. WhatsApp Integration Workspace (Gateway configurations, message feeds, outbound metrics)
+9. Auto-Notify Rules Builder (Pipeline triggers, conditional cards, execution ledgers)
+10. Outbox Log (Notification delivery rows, channel pills, status payloads)
+11. Users Management (Operator accounts, privilege tables, access lists)
+12. Central Audit Trail (Change ledgers, record updates, operational logs)
+13. System Activity Log (User active stream timelines, terminal tables)
+14. System Settings (Configuration panels, save buttons, preferences toggles)
+
+3. OVERHAUL ALL TABLE ROWS, CONTRASTS, AND FIXED COLUMNS
+- Form Fields & Search Inputs: Every single input box, selector bar, filter input, and text area across all 14 pages must be dark-mode styled: `dark:bg-[#0b0f19] text-slate-100 placeholder-slate-500 border dark:border-slate-800 focus:ring-2 focus:ring-blue-500/50`.
+- Opaque Sticky Columns: Ensure any sticky columns (like table 'Actions') are completely opaque using `bg-white dark:bg-[#131b2e]`. Scrolling rows must pass hidden behind them without text bleed-through.
+- Table Row Hovers: Make table row transitions look seamless using `dark:hover:bg-slate-800/50`.
+- Date Logged / Timestamp Cells: Isolate them safely inside clean padding alignments with `whitespace-nowrap`, keeping them perfectly vertical-centered and independent of active button groups.
+
+4. SYSTEM WIDE STATUS BADGES
+- Rewrite all status utility functions or component dictionaries (e.g., Active, Pending, Ready, Completed, Canceled) to use premium, desaturated background tones in dark mode:
+  * Active / Ready / Sent: `dark:bg-emerald-950/40 dark:text-emerald-400 border dark:border-emerald-900/30`
+  * Pending / Attention Required: `dark:bg-amber-950/40 dark:text-amber-400 border dark:border-amber-900/30`
+  * Canceled / Failed / Expired: `dark:bg-rose-950/40 dark:text-rose-400 border dark:border-rose-900/30`
+  * Muted / Completed: `dark:bg-slate-800/50 dark:text-slate-300 border dark:border-slate-700/30`
+
+Do not mark this task as complete until you have systematically reviewed every single file in the views directory and ensured there are absolutely no remaining light-mode anomalies left behind.

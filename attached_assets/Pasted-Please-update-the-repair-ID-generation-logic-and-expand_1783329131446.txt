@@ -1,0 +1,39 @@
+Please update the repair ID generation logic and expand our thermal print/preview components to support five distinct operational document layouts. Refer to the existing logic in "utils.py", "ui_components.py", and "reports.py".
+
+Please implement the following updates:
+
+1. UPDATE REPAIR ID FORMATTING (utils.py)
+- Refactor `generate_repair_id` so that instead of using a time-based modulo hack, it accepts a sequential integer (the auto-incremented database index or next repair count) and formats it exactly as: REP-%currentyear-#repair number.
+- Example output: "REP-2026-184". Ensure the year dynamically reflects the current system year (2026).
+- Update the database insertion and saving sequences across the app to pass the correct sequential ID counter to this function before creating the record string.
+
+2. SUPPORT 5 DISTINCT PRINT/PREVIEW TEMPLATES (ui_components.py)
+Update or add specific classes inheriting from BasePreview to accommodate these 5 specific enterprise needs:
+
+A. Label Preview & Print
+- Maintain the exact 80mm x 20mm physical dimensions using canvas.Canvas.
+- Display the clean text ID at the top using the new format (e.g., "REP-2026-184") and render the corresponding Code128 vector barcode scaled cleanly to fit the physical label width.
+
+B. Deposit Receipt (Tech Intake)
+- Thermal paper layout (80mm width) optimized with AUTO-HEIGHT calculations.
+- Display fields: Date In (from software) + current time, Repair ID, Customer Name, Phone, Device (Brand/Model), Serial/IMEI, and Device Condition.
+- Fully centered text, status set prominently to "RECEIVED", with pickup guidelines at the bottom.
+- CRITICAL: Do NOT include any MOF details, tax lines, or pricing blocks on this receipt.
+
+C. Corporate Receipt (With VAT / MOF)
+- A formal thermal receipt tailored for B2B/Corporate clients.
+- Must include: Company Name, Corporate MOF# field, and itemized layout.
+- Include a clear VAT breakdown line (e.g., 11% VAT or appropriate statutory value) added explicitly to the subtotal to generate a final "Total (USD Including VAT)" line.
+
+D. Standard Receipt (Non-Corporate, No VAT)
+- A clean thermal receipt for individual retail customers.
+- Display fields: Repair details, price, payment confirmation text, and a standard thank you message.
+- CRITICAL: Remove the MOF fields entirely and do not calculate or reference VAT/tax anywhere on this document.
+
+E. Final Invoice
+- Final billing layout designed for thermal paper or standard layout integration.
+- Must display itemized pricing breakdowns, total parts/labor tracking, technician assignments, payment status, and warranty terms text.
+
+3. ARCHITECTURAL & DESIGN COMPLIANCE
+- Ensure all thermal layouts utilize the auto-height simulation engine found in our existing Invoice/Receipt code so that paper sizes adjust dynamically to the size of the content strings without dead white space at the bottom.
+- Ensure all canvas drawings gracefully use fallback fonts if standard styles are modified.

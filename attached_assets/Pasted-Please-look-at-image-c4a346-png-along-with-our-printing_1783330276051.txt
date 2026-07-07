@@ -1,0 +1,29 @@
+Please look at "image_c4a346.png" along with our printing logic. We need to refactor the "Repairs Workflow" page to fix table responsiveness, solve a major user workflow issue regarding printing specific records, and update the Repair Ticket ID naming format.
+
+Please execute the following updates:
+
+1. IMPLEMENT RESPONSIVE TABLE DESIGN
+- The current repairs table breaks layout containment and is not responsive. 
+- Wrap the table element in a responsive scroll container (e.g., using Tailwind: `overflow-x-auto w-full block whitespace-nowrap`).
+- For small mobile viewports, map the columns gracefully or allow horizontal dragging so that data text fields never overlap or shrink below readable text limits.
+
+2. FIX PRINT PREVIEW LOCATION & WORKFLOW (MAKE IT "عملية")
+- Problem: The global "Print Preview" dropdown at the top header bar is useless because it does not know which record the user wants to print.
+- Action: Completely remove the "Print Preview" dropdown from the top header bar.
+- Action: Add a new "Actions" column on the far right side of each table row.
+- Action: Inside this new column for each row, place a clean "Print" action button (or icon dropdown menu) that targets THAT SPECIFIC record directly. 
+- This action dropdown must present the 5 required printing variations for that exact ticket:
+  1. Print Label (80x20mm barcode)
+  2. Print Deposit Receipt (No pricing/VAT)
+  3. Print Corporate Receipt (Includes company details & 11% VAT)
+  4. Print Standard Receipt (Individual retail customer, no VAT)
+  5. Print Final Invoice (Complete breakdown with parts/labor)
+
+3. UPDATE REPAIR ID FORMAT STRING
+- The current system displays IDs as "REP-0009", "REP-0008". This is incorrect.
+- Change the ticket ID formatting rule across the entire application (database storage, generation functions, and UI tables) to use this format structure: REP-%CurrentYear%-%CurrentRecord% (sequential ID number).
+- Example: The tickets shown in the image should render cleanly as "REP-2026-9", "REP-2026-8", "REP-2026-7", etc., depending on their automatic sequence number.
+
+4. POLISH TABLE VISUALS
+- Add vertical centering for row contents so that client names, badges, and action menus line up perfectly.
+- Retain the current badge color codes for status indicators (Pending, Ready, Completed).

@@ -1,0 +1,31 @@
+Let's fix the thermal printer scaling bug immediately. As seen in the physical printout photos, the text and barcodes are rendering microscopically small because the browser print engine is forcing wide desktop modal containers to scale down onto the narrow 80mm roll paper. 
+
+We need to completely rewrite the print stylesheet rules inside DocumentPreviewModal.tsx so that elements use true pixel-to-millimeter mappings with zero browser down-scaling.
+
+Please apply these strict layout updates:
+
+1. FORCE RAW MILLIMETER WIDTHS ON PRINT TARGETS
+Inside the @media print block, strip all Tailwind width overrides (like w-[500px], w-full, max-w-md) from the active print container and force explicit physical metric rules:
+- For 'Print Label': Force the print target container to be EXACTLY `width: 80mm !important; height: 20mm !important; box-sizing: border-box !important; transform: none !important;`
+- For 'Receipts': Force the print target container to be EXACTLY `width: 80mm !important; height: auto !important; box-sizing: border-box !important; transform: none !important;`
+- For 'Invoices': Force the container to `width: 210mm !important;` (Standard A4).
+
+2. ELIMINATE BROWSER SCALING AND OVERFLOWS
+- In the CSS print rules, set:
+  @media print {
+    body, html {
+      width: 80mm !important;
+      margin: 0 !important;
+      padding: 0 !important;
+      -webkit-print-color-adjust: exact !important;
+      print-color-adjust: exact !important;
+    }
+    /* Hide all parent modal structures, close buttons, backdrops, and screen borders */
+    .no-print, button, nav, fixed-overlay-elements {
+      display: none !important;
+    }
+  }
+
+3. ENFORCE TEXT READABILITY ON 80x20MM LABELS
+- On the tiny 80x20mm layout, ensure font sizes use explicit absolute text metrics during print (e.g., set the text to a solid 10pt or 12pt size, and the barcode wrapper height to exactly 8mm). This stops the text components from collapsing or stretching awkwardly.
+- Set tracking and layout elements to `overflow: hidden; whitespace: nowrap;` inside the label block so data entries never break lines or push elements outside the 20mm height envelope.

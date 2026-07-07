@@ -1,0 +1,2 @@
+- [Supabase sync architecture](supabase-sync-arch.md) — dual-write: localStorage sync + debounced Supabase upsert; tables must be created via supabase/schema.sql first.
+- [Inventory adjustStock semantics](inventory-adjust-semantics.md) — 'adjust' type sets absolute quantity (not delta); 'use' clamps to available stock; transaction records effective delta.
