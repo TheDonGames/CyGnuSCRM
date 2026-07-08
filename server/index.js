@@ -76,6 +76,99 @@ app.use(express.json());
 // Helper Functions
 // ============================================================
 
+/**
+ * Official WhatsApp Template Definitions for CyGnuS CRM Pro.
+ *
+ * Template Names (must match Meta Business Suite exactly):
+ * - crm_received: New repair order received
+ * - crm_ready_for_pickup: Repair completed, ready for pickup
+ * - crm_cancelled: Repair order cancelled
+ *
+ * Parameter order is critical and must match the template body in Meta:
+ * - crm_received: [name, brand, model, serial, repair_id, status]
+ * - crm_ready_for_pickup: [name, brand, model, serial, repair_id, status, price_formatted]
+ * - crm_cancelled: [name, repair_id]
+ */
+const WHATSAPP_TEMPLATES = {
+  crm_received: {
+    name: 'crm_received',
+    paramCount: 6,
+    description: 'New repair order received',
+  },
+  crm_ready_for_pickup: {
+    name: 'crm_ready_for_pickup',
+    paramCount: 7,
+    description: 'Repair completed, ready for pickup',
+  },
+  crm_cancelled: {
+    name: 'crm_cancelled',
+    paramCount: 2,
+    description: 'Repair order cancelled',
+  },
+  // Legacy templates (kept for backward compatibility)
+  order_received: { name: 'crm_received', paramCount: 6, legacy: true },
+  order_finished: { name: 'crm_ready_for_pickup', paramCount: 7, legacy: true },
+  order_cancelled: { name: 'crm_cancelled', paramCount: 2, legacy: true },
+};
+
+/**
+ * Resolve template name to official Meta template name.
+ * Handles legacy template names by mapping to current names.
+ */
+function resolveTemplateName(template) {
+  const mapping = {
+    order_received: 'crm_received',
+    order_finished: 'crm_ready_for_pickup',
+    order_cancelled: 'crm_cancelled',
+  };
+  return mapping[template] || template;
+}
+
+/**
+ * Build template parameters in the correct order for each template type.
+ */
+function buildTemplateParams(template, data) {
+  const resolvedTemplate = resolveTemplateName(template);
+
+  switch (resolvedTemplate) {
+    case 'crm_received':
+      // [name, brand, model, serial, repair_id, status]
+      return [
+        data.name || data.customer_name || '',
+        data.brand || '',
+        data.model || '',
+        data.serial || '',
+        data.repair_id || '',
+        data.status || '',
+      ];
+
+    case 'crm_ready_for_pickup':
+      // [name, brand, model, serial, repair_id, status, price_formatted]
+      const price = data.price || 0;
+      const priceFormatted = typeof price === 'number' ? `${price.toFixed(2)} USD` : String(price);
+      return [
+        data.name || data.customer_name || '',
+        data.brand || '',
+        data.model || '',
+        data.serial || '',
+        data.repair_id || '',
+        data.status || '',
+        priceFormatted,
+      ];
+
+    case 'crm_cancelled':
+      // [name, repair_id]
+      return [
+        data.name || data.customer_name || '',
+        data.repair_id || '',
+      ];
+
+    default:
+      // Fallback to provided variables array
+      return data.variables || [];
+  }
+}
+
 function getWhatsAppConfig(providedConfig = {}) {
   return {
     phone_number_id: providedConfig.phone_number_id || process.env.META_PHONE_NUMBER_ID || '',
@@ -177,7 +270,7 @@ app.post('/api/whatsapp/test', async (req, res) => {
 
 app.post('/api/whatsapp/send', async (req, res) => {
   try {
-    const { logId, phone, template, language, variables, config: providedConfig } = req.body;
+    const { logId, phone, template, language, variables, repairData, config: providedConfig } = req.body;
 
     if (!phone || !template) {
       return res.status(400).json({
@@ -195,22 +288,32 @@ app.post('/api/whatsapp/send', async (req, res) => {
       });
     }
 
+    // Normalize phone number: remove all non-digit characters
     const normalizedPhone = phone.replace(/\D/g, '');
+
+    // Resolve template name and build parameters in correct order
+    const resolvedTemplate = resolveTemplateName(template);
+    const templateParams = repairData
+      ? buildTemplateParams(template, repairData)
+      : variables || [];
+
+    console.log(`[WhatsApp Send] Template: ${template} -> ${resolvedTemplate}, Params: ${templateParams.length}`);
 
     const result = await sendWhatsAppTemplate(
       config,
       normalizedPhone,
-      template,
+      resolvedTemplate,
       language || 'en_US',
-      variables || []
+      templateParams
     );
 
-    console.log(`[WhatsApp Send] Message sent: ${logId} -> ${normalizedPhone}`);
+    console.log(`[WhatsApp Send] Message sent: ${logId} -> ${normalizedPhone} (${resolvedTemplate})`);
 
     res.json({
       success: true,
       message_id: result.messages?.[0]?.id || 'unknown',
       log_id: logId,
+      template_used: resolvedTemplate,
     });
   } catch (err) {
     console.error('[WhatsApp Send] Error:', err);

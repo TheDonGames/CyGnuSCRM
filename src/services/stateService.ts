@@ -416,6 +416,11 @@ export class StateService {
   /**
    * Dispatch WhatsApp message when repair status matches configured triggers.
    * Loads config from Supabase and creates log entry.
+   *
+   * Official Template Names (must match Meta Business Suite):
+   * - crm_received: [name, brand, model, serial, repair_id, status]
+   * - crm_ready_for_pickup: [name, brand, model, serial, repair_id, status, price_formatted]
+   * - crm_cancelled: [name, repair_id]
    */
   private async dispatchWhatsAppOnStatusChange(repair: RepairRecord, newStatus: string): Promise<void> {
     try {
@@ -432,29 +437,44 @@ export class StateService {
         return; // WhatsApp not enabled or error loading config
       }
 
-      // Determine template based on status
-      let templateName: 'order_finished' | 'order_cancelled' | null = null;
+      // Determine template based on status using official template names
+      let templateName: 'crm_ready_for_pickup' | 'crm_cancelled' | null = null;
       if (config.finish_statuses?.includes(newStatus)) {
-        templateName = 'order_finished';
+        templateName = 'crm_ready_for_pickup';
       } else if (config.cancel_statuses?.includes(newStatus)) {
-        templateName = 'order_cancelled';
+        templateName = 'crm_cancelled';
       }
 
       if (!templateName || !repair.phone) {
         return; // No matching template or no phone number
       }
 
-      // Generate log ID and variables
+      // Generate log ID
       const logId = `wa_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-      const variables = [
-        repair.customer_name,
-        repair.brand,
-        repair.model,
-        repair.serial || '',
-        repair.repair_id,
-        repair.status,
-        String(repair.price),
-      ];
+
+      // Build template variables based on official parameter order
+      let variables: string[];
+      if (templateName === 'crm_cancelled') {
+        // crm_cancelled: [name, repair_id]
+        variables = [
+          repair.customer_name,
+          repair.repair_id,
+        ];
+      } else {
+        // crm_ready_for_pickup: [name, brand, model, serial, repair_id, status, price_formatted]
+        const priceFormatted = typeof repair.price === 'number'
+          ? `${repair.price.toFixed(2)} USD`
+          : String(repair.price);
+        variables = [
+          repair.customer_name,
+          repair.brand,
+          repair.model,
+          repair.serial || '',
+          repair.repair_id,
+          repair.status,
+          priceFormatted,
+        ];
+      }
 
       // Create log entry with 'queued' status
       await supabase.from('whatsapp_logs').insert({
@@ -479,7 +499,15 @@ export class StateService {
               phone: repair.phone,
               template: templateName,
               language: config.template_language || 'en_US',
-              variables,
+              repairData: {
+                name: repair.customer_name,
+                brand: repair.brand,
+                model: repair.model,
+                serial: repair.serial || '',
+                repair_id: repair.repair_id,
+                status: repair.status,
+                price: repair.price,
+              },
               config: {
                 phone_number_id: config.phone_number_id,
                 access_token: config.access_token,

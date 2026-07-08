@@ -30,7 +30,7 @@ import type { RepairRecord, WhatsAppLogRecord, WhatsAppConfigRecord } from '../t
 // Status pill config
 // ============================================================
 
-type WhatsAppTemplate = 'order_received' | 'order_finished' | 'order_cancelled';
+type WhatsAppTemplate = 'crm_received' | 'crm_ready_for_pickup' | 'crm_cancelled' | 'order_received' | 'order_finished' | 'order_cancelled';
 type WhatsAppLogStatusUI = 'sent' | 'queued' | 'failed';
 
 const STATUS_PILL: Record<WhatsAppLogStatusUI, { bg: string; text: string; icon: React.ReactNode }> = {
@@ -40,6 +40,10 @@ const STATUS_PILL: Record<WhatsAppLogStatusUI, { bg: string; text: string; icon:
 };
 
 const TEMPLATE_LABELS: Record<WhatsAppTemplate, string> = {
+  crm_received: 'Repair Received',
+  crm_ready_for_pickup: 'Ready for Pickup',
+  crm_cancelled: 'Cancelled',
+  // Legacy labels for backward compatibility
   order_received: 'Order Received',
   order_finished: 'Order Finished',
   order_cancelled: 'Order Cancelled',
@@ -473,18 +477,40 @@ interface TemplatePreviewPanelProps {
 }
 
 function TemplatePreviewPanel({ log, repair, resending, onResend }: TemplatePreviewPanelProps) {
+  // Parse variables from log
+  const v = useMemo(() => {
+    return Array.isArray(log.variables) ? log.variables : JSON.parse(JSON.stringify(log.variables));
+  }, [log.variables]);
+
+  // Check if repair was deleted (orphaned log)
+  const isOrphaned = !repair;
+  const displayName = repair?.customer_name || log.customer_name || v[0] || 'Unknown Customer';
+
   const templateContent = useMemo(() => {
-    if (!repair) return 'Message content unavailable - repair record not found.';
-    const v = Array.isArray(log.variables) ? log.variables : JSON.parse(JSON.stringify(log.variables));
-    if (log.template_name === 'order_received') {
+    if (isOrphaned) {
+      // Build message from stored variables when repair is missing
+      const templateType = log.template_name;
+      if (templateType === 'crm_cancelled' || templateType === 'order_cancelled') {
+        return `Hello ${v[0] || 'Customer'},\n\nYour repair order ${v[1] || log.repair_id} has been cancelled.\n\nIf you have questions, please contact us.\n\nThank you.`;
+      }
+      if (templateType === 'crm_ready_for_pickup' || templateType === 'order_finished') {
+        return `Hello ${v[0] || 'Customer'},\n\nGreat news! Your repair is complete:\n\nBrand: ${v[1] || 'N/A'}\nModel: ${v[2] || 'N/A'}\nSerial: ${v[3] || 'N/A'}\nRepair ID: ${v[4] || log.repair_id}\nStatus: ${v[5] || 'Completed'}\nFinal Fee: ${v[6] || 'N/A'}\n\nPlease visit us to pick up your device. Thank you!`;
+      }
+      // crm_received or order_received
+      return `Hello ${v[0] || 'Customer'},\n\nWe've received your device for repair:\n\nBrand: ${v[1] || 'N/A'}\nModel: ${v[2] || 'N/A'}\nSerial: ${v[3] || 'N/A'}\nRepair ID: ${v[4] || log.repair_id}\nStatus: ${v[5] || 'In Progress'}\n\nWe'll keep you updated on the progress. Thank you for choosing our service!`;
+    }
+
+    // Normal case: repair record exists
+    if (log.template_name === 'crm_received' || log.template_name === 'order_received') {
       return `Hello ${v[0] || repair.customer_name},\n\nWe've received your device for repair:\n\nBrand: ${v[1] || repair.brand}\nModel: ${v[2] || repair.model}\nSerial: ${v[3] || repair.serial}\nRepair ID: ${v[4] || repair.repair_id}\nStatus: ${v[5] || repair.status}\n\nWe'll keep you updated on the progress. Thank you for choosing our service!`;
     }
-    if (log.template_name === 'order_finished') {
-      const fee = v[6] || String(repair.price);
-      return `Hello ${v[0] || repair.customer_name},\n\nGreat news! Your repair is complete:\n\nBrand: ${v[1] || repair.brand}\nModel: ${v[2] || repair.model}\nSerial: ${v[3] || repair.serial}\nRepair ID: ${v[4] || repair.repair_id}\nStatus: ${v[5] || repair.status}\nFinal Fee: ${fee} USD\n\nPlease visit us to pick up your device. Thank you!`;
+    if (log.template_name === 'crm_ready_for_pickup' || log.template_name === 'order_finished') {
+      const fee = v[6] || `${repair.price.toFixed(2)} USD`;
+      return `Hello ${v[0] || repair.customer_name},\n\nGreat news! Your repair is complete:\n\nBrand: ${v[1] || repair.brand}\nModel: ${v[2] || repair.model}\nSerial: ${v[3] || repair.serial}\nRepair ID: ${v[4] || repair.repair_id}\nStatus: ${v[5] || repair.status}\nFinal Fee: ${fee}\n\nPlease visit us to pick up your device. Thank you!`;
     }
-    return `Hello ${v[0] || repair.customer_name},\n\nYour repair order ${v[4] || repair.repair_id} has been cancelled.\n\nIf you have questions, please contact us.\n\nThank you.`;
-  }, [log, repair]);
+    // crm_cancelled or order_cancelled
+    return `Hello ${v[0] || repair.customer_name},\n\nYour repair order ${v[1] || repair.repair_id} has been cancelled.\n\nIf you have questions, please contact us.\n\nThank you.`;
+  }, [log, repair, isOrphaned, v]);
 
   return (
     <div className="card overflow-hidden h-full flex flex-col">
@@ -494,8 +520,18 @@ function TemplatePreviewPanel({ log, repair, resending, onResend }: TemplatePrev
           <MessageCircle className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
           <h3 className="text-sm font-semibold text-gray-900 dark:text-slate-100">Template Preview</h3>
         </div>
-        <span className="text-xs text-gray-400 dark:text-slate-500 font-mono">{TEMPLATE_LABELS[log.template_name as WhatsAppTemplate]}</span>
+        <span className="text-xs text-gray-400 dark:text-slate-500 font-mono">{TEMPLATE_LABELS[log.template_name as WhatsAppTemplate] || log.template_name}</span>
       </div>
+
+      {/* Warning banner for orphaned logs */}
+      {isOrphaned && (
+        <div className="flex items-center gap-2 bg-amber-50 dark:bg-amber-950/20 border-b border-amber-200 dark:border-amber-900/30 px-4 py-2">
+          <AlertCircle className="h-4 w-4 text-amber-600 dark:text-amber-400 flex-shrink-0" />
+          <p className="text-xs text-amber-700 dark:text-amber-400">
+            Repair record deleted. Message content reconstructed from log data.
+          </p>
+        </div>
+      )}
 
       {/* Phone mockup */}
       <div className="flex-1 p-6 bg-gray-50 dark:bg-[#0b0f19] flex items-center justify-center">
@@ -504,10 +540,10 @@ function TemplatePreviewPanel({ log, repair, resending, onResend }: TemplatePrev
           <div className="rounded-[1.5rem] bg-[#E5DDD5] overflow-hidden">
             <div className="flex items-center gap-2 bg-[#075E54] px-3 py-2">
               <div className="flex h-8 w-8 items-center justify-center rounded-full bg-white/20 text-white text-xs font-semibold">
-                {(log.customer_name || '?').charAt(0).toUpperCase()}
+                {displayName.charAt(0).toUpperCase()}
               </div>
               <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium text-white truncate">{log.customer_name}</p>
+                <p className="text-sm font-medium text-white truncate">{displayName}</p>
                 <p className="text-xs text-white/70 font-mono">{normalizePhone(log.phone)}</p>
               </div>
               <Smartphone className="h-4 w-4 text-white/70" />

@@ -218,7 +218,7 @@ export interface SystemConfig {
 // WhatsApp Integration Types
 // ============================================================
 
-export type WhatsAppTemplateName = 'order_received' | 'order_finished' | 'order_cancelled';
+export type WhatsAppTemplateName = 'crm_received' | 'crm_ready_for_pickup' | 'crm_cancelled' | 'order_received' | 'order_finished' | 'order_cancelled';
 export type WhatsAppLogStatus = 'queued' | 'sent' | 'failed';
 
 export interface WhatsAppConfigRecord {
