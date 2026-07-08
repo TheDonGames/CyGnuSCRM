@@ -1,15 +1,3 @@
-/**
- * CRM Pro - WhatsApp Backend Server
- * Express server for WhatsApp Cloud API integration.
- *
- * Environment Variables:
- * - PORT: Server port (defaults to 8080 for cloud hosting)
- * - FRONTEND_URL: Production frontend URL for CORS
- * - META_PHONE_NUMBER_ID: WhatsApp Business Phone Number ID
- * - META_ACCESS_TOKEN: WhatsApp Cloud API Access Token
- * - META_API_VERSION: WhatsApp API Version (default: v22.0)
- */
-
 import express from 'express';
 import cors from 'cors';
 
@@ -58,9 +46,6 @@ app.use(express.json());
 // Helper Functions
 // ============================================================
 
-/**
- * Get WhatsApp configuration from environment or use provided config.
- */
 function getWhatsAppConfig(providedConfig = {}) {
   return {
     phone_number_id: providedConfig.phone_number_id || process.env.META_PHONE_NUMBER_ID || '',
@@ -69,9 +54,6 @@ function getWhatsAppConfig(providedConfig = {}) {
   };
 }
 
-/**
- * Send a WhatsApp template message via Meta Cloud API.
- */
 async function sendWhatsAppTemplate(config, phone, templateName, language, variables) {
   const { phone_number_id, access_token, api_version } = config;
   const url = `https://graph.facebook.com/${api_version}/${phone_number_id}/messages`;
@@ -122,10 +104,6 @@ app.get('/health', (req, res) => {
 // WhatsApp API Routes
 // ============================================================
 
-/**
- * Test WhatsApp connection.
- * Validates credentials by attempting to fetch phone number details.
- */
 app.post('/api/whatsapp/test', async (req, res) => {
   try {
     const config = getWhatsAppConfig(req.body);
@@ -137,7 +115,6 @@ app.post('/api/whatsapp/test', async (req, res) => {
       });
     }
 
-    // Test by fetching phone number details from Meta API
     const url = `https://graph.facebook.com/${config.api_version}/${config.phone_number_id}`;
     const response = await fetch(url, {
       headers: {
@@ -168,10 +145,6 @@ app.post('/api/whatsapp/test', async (req, res) => {
   }
 });
 
-/**
- * Send a WhatsApp message.
- * Used for automatic message dispatch on repair status changes.
- */
 app.post('/api/whatsapp/send', async (req, res) => {
   try {
     const { logId, phone, template, language, variables, config: providedConfig } = req.body;
@@ -192,10 +165,8 @@ app.post('/api/whatsapp/send', async (req, res) => {
       });
     }
 
-    // Normalize phone number (remove non-digits, ensure country code)
     const normalizedPhone = phone.replace(/\D/g, '');
 
-    // Send the template message
     const result = await sendWhatsAppTemplate(
       config,
       normalizedPhone,
@@ -220,10 +191,6 @@ app.post('/api/whatsapp/send', async (req, res) => {
   }
 });
 
-/**
- * Resend a failed WhatsApp message.
- * Retrieves log details and retries the send.
- */
 app.post('/api/whatsapp/resend', async (req, res) => {
   try {
     const { logId } = req.body;
@@ -234,13 +201,6 @@ app.post('/api/whatsapp/resend', async (req, res) => {
         error: 'logId is required',
       });
     }
-
-    // In a production system, you would fetch the log details from Supabase
-    // For now, we'll expect the client to provide the necessary details
-    // This endpoint is a passthrough to the send endpoint with retry logic
-
-    // The actual log lookup should be done by the frontend
-    // This endpoint serves as a trigger to attempt the resend
 
     res.json({
       success: true,
