@@ -19,34 +19,39 @@ const app = express();
 // Dynamic CORS Configuration
 // ============================================================
 
-// 1. Properly define your allowed origins array
 const ALLOWED_ORIGINS = [
-  process.env.FRONTEND_URL,
+  'http://localhost:5173',
   'http://localhost:3000',
-  'http://localhost:5173'
-].filter(Boolean); // Filters out undefined values if FRONTEND_URL isn't set yet
+  'http://localhost:5001',
+  'http://127.0.0.1:5173',
+  'http://127.0.0.1:3000',
+  'http://127.0.0.1:5001',
+];
 
-app.use(cors({
+// Add production frontend URL from environment
+if (process.env.FRONTEND_URL) {
+  ALLOWED_ORIGINS.push(process.env.FRONTEND_URL);
+}
+
+const corsOptions = {
   origin: (origin, callback) => {
-    // Allow requests with no origin (like mobile apps, curl, or server-to-server)
+    // Allow requests with no origin (mobile apps, curl, etc.)
     if (!origin) return callback(null, true);
-    
-    // Allow configured origins, local development, or Webcontainer environments
-    if (
-      ALLOWED_ORIGINS.includes(origin) || 
-      origin.includes('webcontainer-api.io') ||
-      process.env.NODE_ENV !== 'production'
-    ) {
-      return callback(null, true);
+
+    if (ALLOWED_ORIGINS.includes(origin)) {
+      callback(null, true);
+    } else {
+      // Log rejected origins for debugging
+      console.warn(`[CORS] Rejected origin: ${origin}`);
+      callback(new Error('Not allowed by CORS'));
     }
-    
-    return callback(new Error('Not allowed by CORS'));
   },
+  credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Client-Info', 'Apikey'],
-  credentials: true
-}));
+};
 
+app.use(cors(corsOptions));
 app.use(express.json());
 
 // ============================================================
@@ -229,6 +234,13 @@ app.post('/api/whatsapp/resend', async (req, res) => {
         error: 'logId is required',
       });
     }
+
+    // In a production system, you would fetch the log details from Supabase
+    // For now, we'll expect the client to provide the necessary details
+    // This endpoint is a passthrough to the send endpoint with retry logic
+
+    // The actual log lookup should be done by the frontend
+    // This endpoint serves as a trigger to attempt the resend
 
     res.json({
       success: true,
