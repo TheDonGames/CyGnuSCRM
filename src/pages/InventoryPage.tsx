@@ -1,23 +1,5 @@
 import { useState, useMemo, useEffect } from 'react';
-import {
-  Boxes,
-  Plus,
-  Search,
-  AlertTriangle,
-  Package,
-  TrendingDown,
-  DollarSign,
-  Edit2,
-  Trash2,
-  ChevronDown,
-  ArrowDownToLine,
-  ArrowUpFromLine,
-  RefreshCcw,
-  RotateCcw,
-  History,
-  X,
-  Filter,
-} from 'lucide-react';
+import { Boxes, Plus, Search, AlertTriangle, Package, TrendingDown, DollarSign, CreditCard as Edit2, Trash2, ChevronDown, ArrowDownToLine, ArrowUpFromLine, RefreshCcw, RotateCcw, History, X, Filter } from 'lucide-react';
 import { Modal } from '../components/Modal';
 import { showToast } from '../components/Toast';
 import { useStore } from '../context/StoreContext';
@@ -626,9 +608,17 @@ export function InventoryPage() {
 
   const handleDelete = (item: InventoryItem) => {
     if (!confirm(`Delete "${item.name}" (${item.sku})? This cannot be undone.`)) return;
-    service.deleteInventoryItem(item.id);
-    showToast('success', `${item.name} removed from inventory`);
+    try {
+      service.deleteInventoryItem(item.id);
+      showToast('success', `${item.name} removed from inventory`);
+    } catch (err) {
+      showToast('error', err instanceof Error ? err.message : 'Failed to delete item');
+    }
   };
+
+  // Get current user for role-based permissions
+  const currentUser = service.getCurrentUser();
+  const isAdmin = currentUser?.role.toLowerCase() === 'admin';
 
   return (
     <>
@@ -875,8 +865,13 @@ export function InventoryPage() {
                             </button>
                             <button
                               onClick={() => handleDelete(item)}
-                              className="rounded-lg p-1.5 text-gray-400 hover:bg-red-50 hover:text-red-600 transition-colors"
-                              title="Delete Item"
+                              className={`rounded-lg p-1.5 transition-colors ${
+                                isAdmin
+                                  ? 'text-gray-400 hover:bg-red-50 hover:text-red-600'
+                                  : 'text-gray-300 dark:text-gray-600 cursor-not-allowed'
+                              }`}
+                              title={isAdmin ? 'Delete Item' : 'Admin only - Delete disabled'}
+                              disabled={!isAdmin}
                             >
                               <Trash2 className="h-4 w-4" />
                             </button>

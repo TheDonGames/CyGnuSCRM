@@ -252,6 +252,12 @@ function buildSeedRepairs(): RepairRecord[] {
       phone_norm: normalizePhone(r.phone),
       created_at: now,
       updated_at: now,
+      // Corporate defaults
+      is_corporate: false,
+      corporate_mof: '',
+      corporate_address: '',
+      corporate_email: '',
+      corporate_website: '',
     } as RepairRecord;
   });
 }

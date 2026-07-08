@@ -544,26 +544,30 @@ export class StateService {
 
   deleteRepair(id: string): void {
     const actor = this.getCurrentUser();
+
+    // Admin-only restriction
+    if (!actor || actor.role.toLowerCase() !== 'admin') {
+      throw new Error('Access Denied: Admin privileges required to delete repair records.');
+    }
+
     const repair = this.state.repairs.find((r) => r.id === id);
     if (!repair) return;
 
-    const log = createRecordLog(repair.repair_id, actor?.username || 'system', 'DELETE', 'Repair record deleted');
+    const log = createRecordLog(repair.repair_id, actor.username, 'DELETE', 'Repair record deleted');
 
     this.setState((prev) => ({
       ...prev,
       repairs: prev.repairs.filter((r) => r.id !== id),
       logs: [log, ...prev.logs],
-      activities: actor
-        ? [
-            {
-              id: generateId('act'),
-              username: actor.username,
-              timestamp: nowISO(),
-              activity: `Deleted repair ${repair.repair_id}`,
-            },
-            ...prev.activities,
-          ]
-        : prev.activities,
+      activities: [
+        {
+          id: generateId('act'),
+          username: actor.username,
+          timestamp: nowISO(),
+          activity: `Deleted repair ${repair.repair_id}`,
+        },
+        ...prev.activities,
+      ],
     }));
   }
 
@@ -758,23 +762,28 @@ export class StateService {
 
   deleteInventoryItem(id: string): void {
     const actor = this.getCurrentUser();
+
+    // Admin-only restriction
+    if (!actor || actor.role.toLowerCase() !== 'admin') {
+      throw new Error('Access Denied: Admin privileges required to delete inventory items.');
+    }
+
     const item = this.state.inventory.find((i) => i.id === id);
     if (!item) return;
+
     this.setState((prev) => ({
       ...prev,
       inventory: prev.inventory.filter((i) => i.id !== id),
       inventoryTransactions: prev.inventoryTransactions.filter((t) => t.item_id !== id),
-      activities: actor
-        ? [
-            {
-              id: generateId('act'),
-              username: actor.username,
-              timestamp: nowISO(),
-              activity: `Deleted inventory item: ${item.name} (${item.sku})`,
-            },
-            ...prev.activities,
-          ]
-        : prev.activities,
+      activities: [
+        {
+          id: generateId('act'),
+          username: actor.username,
+          timestamp: nowISO(),
+          activity: `Deleted inventory item: ${item.name} (${item.sku})`,
+        },
+        ...prev.activities,
+      ],
     }));
   }
 

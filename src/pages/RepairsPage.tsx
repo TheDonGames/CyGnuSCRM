@@ -167,10 +167,18 @@ export function RepairsPage() {
 
   const handleDelete = (repair: RepairRecord) => {
     if (confirm(`Delete repair ${repair.repair_id} for ${repair.customer_name}?`)) {
-      service.deleteRepair(repair.id);
-      showToast('success', `Repair ${repair.repair_id} deleted`);
+      try {
+        service.deleteRepair(repair.id);
+        showToast('success', `Repair ${repair.repair_id} deleted`);
+      } catch (err) {
+        showToast('error', err instanceof Error ? err.message : 'Failed to delete repair');
+      }
     }
   };
+
+  // Get current user for role-based permissions
+  const currentUser = service.getCurrentUser();
+  const isAdmin = currentUser?.role.toLowerCase() === 'admin';
 
   // رندر أيقونة الأسهم البروفشنال للهيدرز
   const renderSortIcon = (field: SortField) => {
@@ -412,8 +420,13 @@ export function RepairsPage() {
                         </button>
                         <button
                           onClick={() => handleDelete(r)}
-                          className="rounded-lg p-1.5 text-gray-400 hover:bg-red-50 dark:hover:bg-red-900/30 hover:text-red-600 dark:hover:text-red-400 border border-transparent hover:border-red-100 dark:hover:border-red-800 transition-all"
-                          title="Delete Ticket"
+                          className={`rounded-lg p-1.5 border border-transparent transition-all ${
+                            isAdmin
+                              ? 'text-gray-400 hover:bg-red-50 dark:hover:bg-red-900/30 hover:text-red-600 dark:hover:text-red-400 hover:border-red-100 dark:hover:border-red-800'
+                              : 'text-gray-300 dark:text-gray-600 cursor-not-allowed'
+                          }`}
+                          title={isAdmin ? 'Delete Ticket' : 'Admin only - Delete disabled'}
+                          disabled={!isAdmin}
                         >
                           <Trash2 className="h-4 w-4" />
                         </button>

@@ -50,6 +50,12 @@ export interface RepairRecord {
   notes: string;
   created_at: string;
   updated_at: string;
+  // Corporate client fields (B2B)
+  is_corporate: boolean;
+  corporate_mof: string;       // Ministry of Finance number
+  corporate_address: string;   // Business address
+  corporate_email: string;     // Business email
+  corporate_website: string;   // Business website
 }
 
 export interface UserActivity {
