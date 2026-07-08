@@ -7,32 +7,62 @@ const app = express();
 // Dynamic CORS Configuration
 // ============================================================
 
-const ALLOWED_ORIGINS = [
-  'http://localhost:5173',
-  'http://localhost:3000',
-  'http://localhost:5001',
-  'http://127.0.0.1:5173',
-  'http://127.0.0.1:3000',
-  'http://127.0.0.1:5001',
-];
+/**
+ * Check if origin is a valid WebContainer/Bolt preview domain.
+ * Matches patterns like: https://abc123--name--username.webcontainer-api.io
+ */
+function isWebContainerOrigin(origin) {
+  try {
+    const url = new URL(origin);
+    // Match webcontainer-api.io subdomains
+    return /\.webcontainer-api\.io$/.test(url.hostname);
+  } catch {
+    return false;
+  }
+}
 
-// Add production frontend URL from environment
-if (process.env.FRONTEND_URL) {
-  ALLOWED_ORIGINS.push(process.env.FRONTEND_URL);
+/**
+ * Get the list of allowed origins dynamically.
+ */
+function getAllowedOrigins() {
+  const origins = [
+    'http://localhost:5173',
+    'http://localhost:3000',
+    'http://localhost:5001',
+    'http://localhost:8080',
+    'http://127.0.0.1:5173',
+    'http://127.0.0.1:3000',
+    'http://127.0.0.1:5001',
+    'http://127.0.0.1:8080',
+  ];
+
+  // Add production frontend URL from environment
+  if (process.env.FRONTEND_URL) {
+    origins.push(process.env.FRONTEND_URL);
+  }
+
+  return origins;
 }
 
 const corsOptions = {
   origin: (origin, callback) => {
-    // Allow requests with no origin (mobile apps, curl, etc.)
+    // Allow requests with no origin (mobile apps, curl, postman, etc.)
     if (!origin) return callback(null, true);
 
-    if (ALLOWED_ORIGINS.includes(origin)) {
-      callback(null, true);
-    } else {
-      // Log rejected origins for debugging
-      console.warn(`[CORS] Rejected origin: ${origin}`);
-      callback(new Error('Not allowed by CORS'));
+    // Check against static allowed origins
+    const allowedOrigins = getAllowedOrigins();
+    if (allowedOrigins.includes(origin)) {
+      return callback(null, true);
     }
+
+    // Check for dynamic WebContainer preview domains
+    if (isWebContainerOrigin(origin)) {
+      return callback(null, true);
+    }
+
+    // Log rejected origins for debugging
+    console.warn(`[CORS] Rejected origin: ${origin}`);
+    callback(new Error('Not allowed by CORS'));
   },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
@@ -236,7 +266,8 @@ const PORT = process.env.PORT || 8080;
 
 app.listen(PORT, () => {
   console.log(`[CRM Pro Backend] Server running on port ${PORT}`);
-  console.log(`[CORS] Allowed origins: ${ALLOWED_ORIGINS.join(', ')}`);
+  console.log(`[CORS] Static origins: ${getAllowedOrigins().join(', ')}`);
+  console.log(`[CORS] Dynamic origins: *.webcontainer-api.io (WebContainer previews)`);
 });
 
 export default app;

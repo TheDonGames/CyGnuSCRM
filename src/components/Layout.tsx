@@ -55,7 +55,7 @@ const NAV_CATEGORIES: NavCategory[] = [
   {
     label: 'Logistics & Finance',
     items: [
-      { key: 'invoices', label: 'Invoices Hub', icon: <FileText className="h-5 w-5" /> },
+      { key: 'invoices', label: 'Invoices Hub', icon: <FileText className="h-5 w-5" />, adminOnly: true },
       { key: 'warranty', label: 'Warranty Status', icon: <ShieldCheck className="h-5 w-5" /> },
       { key: 'inventory', label: 'Inventory / Stock', icon: <Boxes className="h-5 w-5" /> },
     ],

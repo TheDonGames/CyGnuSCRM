@@ -9,7 +9,7 @@ interface ProtectedRouteProps {
   children: ReactNode;
 }
 
-const ADMIN_ONLY_PAGES: PageKey[] = ['users', 'rules', 'logs', 'activity', 'settings'];
+const ADMIN_ONLY_PAGES: PageKey[] = ['users', 'rules', 'logs', 'activity', 'settings', 'invoices'];
 
 export function ProtectedRoute({ page, onNavigate, children }: ProtectedRouteProps) {
   const { service } = useStore();
