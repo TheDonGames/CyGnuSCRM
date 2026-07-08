@@ -21,8 +21,10 @@ export type RepairStatus =
   | 'In Progress'
   | 'Awaiting Parts'
   | 'Ready'
+  | 'Ready For Pickup'
   | 'Completed'
-  | 'Cancelled';
+  | 'Cancelled'
+  | 'Canceled';
 
 export interface RepairRecord {
   id: string;

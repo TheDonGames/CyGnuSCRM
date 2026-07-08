@@ -359,8 +359,8 @@ function getDefaultConfig(): WhatsAppConfig {
     api_version: 'v22.0',
     template_language: 'en_US',
     enabled: false,
-    finish_statuses: ['Completed', 'Ready'],
-    cancel_statuses: ['Cancelled'],
+    finish_statuses: ['Ready For Pickup'],
+    cancel_statuses: ['Canceled'],
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),
   };

@@ -561,8 +561,8 @@ function IntegrationsTab() {
     phone_number_id: '',
     access_token: '',
     template_language: 'en_US',
-    finish_statuses: ['Completed', 'Ready'],
-    cancel_statuses: ['Cancelled'],
+    finish_statuses: ['Ready For Pickup'],
+    cancel_statuses: ['Canceled'],
   });
   const [waLoading, setWaLoading] = useState(true);
   const [waSaving, setWaSaving] = useState(false);
@@ -585,8 +585,8 @@ function IntegrationsTab() {
             phone_number_id: data.phone_number_id ?? '',
             access_token: data.access_token ?? '',
             template_language: data.template_language ?? 'en_US',
-            finish_statuses: data.finish_statuses ?? ['Completed', 'Ready'],
-            cancel_statuses: data.cancel_statuses ?? ['Cancelled'],
+            finish_statuses: data.finish_statuses ?? ['Ready For Pickup'],
+            cancel_statuses: data.cancel_statuses ?? ['Canceled'],
           });
         }
       } catch (err) {

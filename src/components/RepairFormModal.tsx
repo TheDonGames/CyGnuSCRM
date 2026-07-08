@@ -10,8 +10,10 @@ const STATUSES: RepairStatus[] = [
   'In Progress',
   'Awaiting Parts',
   'Ready',
+  'Ready For Pickup',
   'Completed',
   'Cancelled',
+  'Canceled',
 ];
 
 type FormTab = 'customer' | 'device' | 'repair' | 'corporate';

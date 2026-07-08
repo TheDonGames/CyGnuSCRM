@@ -33,8 +33,10 @@ const STATUSES: RepairStatus[] = [
   'In Progress',
   'Awaiting Parts',
   'Ready',
+  'Ready For Pickup',
   'Completed',
   'Cancelled',
+  'Canceled',
 ];
 
 // Module-level intent flags — set by Dashboard before navigating

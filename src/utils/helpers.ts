@@ -1,11 +1,40 @@
 import type { RepairRecord, RecordLog, LogAction } from '../types';
 
 // ============================================================
-// Phone normalization — strips all non-digit characters
+// Phone normalization — intelligent handling for Lebanon numbers
 // ============================================================
 
+/**
+ * Normalize phone number for WhatsApp/Meta API:
+ * - Strips all spaces, dashes, parentheses, and special characters
+ * - For Lebanon local 8-digit numbers: prepend '961' country code
+ * - For international numbers: preserve full format
+ *
+ * Examples:
+ * - '76 809 939' → '96176809939' (Lebanon local)
+ * - '76809939' → '96176809939' (Lebanon local)
+ * - '+961 76 809 939' → '96176809939' (Lebanon with country code)
+ * - '96176809939' → '96176809939' (already normalized Lebanon)
+ * - '+44 7735 181560' → '447735181560' (UK international)
+ */
 export function normalizePhone(phone: string | null | undefined): string {
-  return (phone || '').replace(/\D/g, '');
+  if (!phone) return '';
+
+  // Remove all non-digit characters
+  const digits = phone.replace(/\D/g, '');
+
+  // If empty after cleaning, return empty
+  if (!digits) return '';
+
+  // Handle Lebanon local 8-digit numbers: prepend 961
+  // Lebanon mobile numbers are 8 digits (e.g., 76-809-939, 70-123-456, 71-xxx-xxxx, 03-xxx-xxxx)
+  // Mobile prefixes: 03, 70, 71, 76, 78, 79, 81, etc.
+  if (digits.length === 8) {
+    return '961' + digits;
+  }
+
+  // Already has country code or is international - return as-is
+  return digits;
 }
 
 // ============================================================
@@ -277,8 +306,10 @@ export function getStatusColor(status: string): string {
     'in progress': 'bg-blue-100 dark:bg-blue-950/40 text-blue-800 dark:text-blue-400',
     'awaiting parts': 'bg-purple-100 dark:bg-purple-950/40 text-purple-800 dark:text-purple-400',
     'ready': 'bg-emerald-100 dark:bg-emerald-950/40 text-emerald-800 dark:text-emerald-400',
+    'ready for pickup': 'bg-emerald-100 dark:bg-emerald-950/40 text-emerald-800 dark:text-emerald-400',
     'completed': 'bg-gray-100 dark:bg-slate-800/60 text-gray-700 dark:text-slate-400',
     'cancelled': 'bg-red-100 dark:bg-red-950/40 text-red-800 dark:text-red-400',
+    'canceled': 'bg-red-100 dark:bg-red-950/40 text-red-800 dark:text-red-400',
   };
 
   return map[normalizedStatus] || 'bg-gray-100 dark:bg-slate-800/60 text-gray-700 dark:text-slate-400';
@@ -292,8 +323,10 @@ export function getStatusDotColor(status: string): string {
     'in progress': 'bg-blue-500',
     'awaiting parts': 'bg-purple-500',
     'ready': 'bg-emerald-500',
+    'ready for pickup': 'bg-emerald-500',
     'completed': 'bg-gray-400',
     'cancelled': 'bg-red-500',
+    'canceled': 'bg-red-500',
   };
 
   return map[normalizedStatus] || 'bg-gray-400';

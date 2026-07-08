@@ -166,7 +166,7 @@ function buildSeedRepairs(): RepairRecord[] {
       condition: 'Good',
       problem: 'Several keys not responding (W, A, S, D cluster).',
       device_notes: 'Liquid spill suspected near WASD area.',
-      status: 'Ready',
+      status: 'Ready For Pickup',
       technician: 'jsmith',
       technician_notes: 'Replaced keyboard assembly. All keys tested OK.',
       warranty: 6,

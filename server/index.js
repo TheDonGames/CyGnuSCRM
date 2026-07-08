@@ -177,6 +177,30 @@ function getWhatsAppConfig(providedConfig = {}) {
   };
 }
 
+/**
+ * Normalize phone number for WhatsApp/Meta API:
+ * - Strips all spaces, dashes, parentheses, and special characters
+ * - For Lebanon local 8-digit numbers: prepend '961' country code
+ * - For international numbers: preserve full format
+ */
+function normalizePhoneForWhatsApp(phone) {
+  if (!phone) return '';
+
+  // Remove all non-digit characters
+  const digits = phone.replace(/\D/g, '');
+
+  // If empty after cleaning, return empty
+  if (!digits) return '';
+
+  // Handle Lebanon local 8-digit numbers: prepend 961
+  if (digits.length === 8) {
+    return '961' + digits;
+  }
+
+  // Already has country code or is international - return as-is
+  return digits;
+}
+
 async function sendWhatsAppTemplate(config, phone, templateName, language, variables) {
   const { phone_number_id, access_token, api_version } = config;
   const url = `https://graph.facebook.com/${api_version}/${phone_number_id}/messages`;
@@ -288,8 +312,8 @@ app.post('/api/whatsapp/send', async (req, res) => {
       });
     }
 
-    // Normalize phone number: remove all non-digit characters
-    const normalizedPhone = phone.replace(/\D/g, '');
+    // Normalize phone number with intelligent Lebanon handling
+    const normalizedPhone = normalizePhoneForWhatsApp(phone);
 
     // Resolve template name and build parameters in correct order
     const resolvedTemplate = resolveTemplateName(template);

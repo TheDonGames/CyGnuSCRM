@@ -325,7 +325,108 @@ export class StateService {
         : prev.activities,
     }));
 
+    // Auto-send crm_received WhatsApp message after repair creation
+    this.dispatchWhatsAppOnRepairCreated(repair);
+
     return repair;
+  }
+
+  /**
+   * Dispatch WhatsApp 'crm_received' message when a new repair is created.
+   * This triggers automatically without manual intervention.
+   */
+  private async dispatchWhatsAppOnRepairCreated(repair: RepairRecord): Promise<void> {
+    try {
+      const { supabase } = await import('./supabaseClient');
+
+      // Load WhatsApp config
+      const { data: config, error } = await supabase
+        .from('whatsapp_config')
+        .select('*')
+        .eq('id', 1)
+        .maybeSingle();
+
+      if (error || !config || !config.enabled || !repair.phone) {
+        return; // WhatsApp not enabled or no phone number
+      }
+
+      // Generate log ID
+      const logId = `wa_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+
+      // Build template variables for crm_received
+      // [name, brand, model, serial, repair_id, status]
+      const variables = [
+        repair.customer_name,
+        repair.brand || '',
+        repair.model || '',
+        repair.serial || '',
+        repair.repair_id,
+        repair.status,
+      ];
+
+      // Create log entry with 'queued' status
+      await supabase.from('whatsapp_logs').insert({
+        id: logId,
+        repair_id: repair.repair_id,
+        customer_name: repair.customer_name,
+        phone: repair.phone,
+        template_name: 'crm_received',
+        variables,
+        status: 'queued',
+        created_at: nowISO(),
+      });
+
+      // If live API is configured, attempt to send
+      if (config.phone_number_id && config.access_token) {
+        try {
+          const response = await fetch(getApiEndpoint('/api/whatsapp/send'), {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              logId,
+              phone: repair.phone,
+              template: 'crm_received',
+              language: config.template_language || 'en_US',
+              repairData: {
+                name: repair.customer_name,
+                brand: repair.brand,
+                model: repair.model,
+                serial: repair.serial || '',
+                repair_id: repair.repair_id,
+                status: repair.status,
+              },
+              config: {
+                phone_number_id: config.phone_number_id,
+                access_token: config.access_token,
+                api_version: config.api_version || 'v22.0',
+              },
+            }),
+          });
+
+          const data = await response.json();
+
+          if (response.ok && data.success) {
+            await supabase
+              .from('whatsapp_logs')
+              .update({ status: 'sent', sent_at: nowISO() })
+              .eq('id', logId);
+          } else {
+            await supabase
+              .from('whatsapp_logs')
+              .update({ status: 'failed', error_message: data.error || 'API error' })
+              .eq('id', logId);
+          }
+        } catch (err) {
+          const message = err instanceof Error ? err.message : 'Network error';
+          await supabase
+            .from('whatsapp_logs')
+            .update({ status: 'failed', error_message: message })
+            .eq('id', logId);
+        }
+      }
+    } catch (err) {
+      console.warn('[stateService] dispatchWhatsAppOnRepairCreated error:', err);
+    }
   }
 
   updateRepair(id: string, updates: Partial<RepairRecord>): void {
