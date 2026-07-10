@@ -1014,7 +1014,7 @@ export class StateService {
     const now = nowISO();
     const supplier: Supplier = {
       ...data,
-      id: generateId('sup'),
+      id: crypto.randomUUID(),
       created_at: now,
     };
     this.setState((prev) => ({
