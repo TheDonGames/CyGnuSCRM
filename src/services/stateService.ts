@@ -380,7 +380,10 @@ export class StateService {
    */
   private async dispatchWhatsAppOnRepairCreated(repair: RepairRecord): Promise<void> {
     try {
+      if (!repair.phone) return;
+
       const { supabase } = await import('./supabaseClient');
+      const phoneFmt = normalizePhone(repair.phone);
 
       // Load WhatsApp config
       const { data: config, error } = await supabase
@@ -389,15 +392,11 @@ export class StateService {
         .eq('id', 1)
         .maybeSingle();
 
-      if (error || !config || !config.enabled || !repair.phone) {
-        return; // WhatsApp not enabled or no phone number
+      if (error || !config || !config.enabled) {
+        return; // WhatsApp not enabled
       }
 
-      // Generate log ID
       const logId = `wa_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-
-      // Build template variables for crm_received
-      // [name, brand, model, serial, repair_id, status]
       const variables = [
         repair.customer_name,
         repair.brand || '',
@@ -407,19 +406,19 @@ export class StateService {
         repair.status,
       ];
 
-      // Create log entry with 'queued' status
+      // Always log to outbox
       await supabase.from('whatsapp_logs').insert({
         id: logId,
         repair_id: repair.repair_id,
         customer_name: repair.customer_name,
-        phone: repair.phone,
+        phone: phoneFmt,
         template_name: 'crm_received',
         variables,
         status: 'queued',
         created_at: nowISO(),
       });
 
-      // If live API is configured, attempt to send
+      // If live API credentials present, attempt send; otherwise leave queued (dev mode)
       if (config.phone_number_id && config.access_token) {
         try {
           const response = await fetch(getApiEndpoint('/api/whatsapp/send'), {
@@ -427,7 +426,7 @@ export class StateService {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               logId,
-              phone: repair.phone,
+              phone: phoneFmt,
               template: 'crm_received',
               language: config.template_language || 'en_US',
               repairData: {
@@ -449,23 +448,16 @@ export class StateService {
           const data = await response.json();
 
           if (response.ok && data.success) {
-            await supabase
-              .from('whatsapp_logs')
-              .update({ status: 'sent', sent_at: nowISO() })
-              .eq('id', logId);
+            await supabase.from('whatsapp_logs').update({ status: 'sent', sent_at: nowISO() }).eq('id', logId);
           } else {
-            await supabase
-              .from('whatsapp_logs')
-              .update({ status: 'failed', error_message: data.error || 'API error' })
-              .eq('id', logId);
+            await supabase.from('whatsapp_logs').update({ status: 'failed', error_message: data.error || 'API error' }).eq('id', logId);
           }
         } catch (err) {
           const message = err instanceof Error ? err.message : 'Network error';
-          await supabase
-            .from('whatsapp_logs')
-            .update({ status: 'failed', error_message: message })
-            .eq('id', logId);
+          await supabase.from('whatsapp_logs').update({ status: 'failed', error_message: message }).eq('id', logId);
         }
+      } else {
+        console.info(`[WhatsApp Mock] crm_received queued (dev mode) for ${phoneFmt}`);
       }
     } catch (err) {
       console.warn('[stateService] dispatchWhatsAppOnRepairCreated error:', err);
@@ -571,7 +563,10 @@ export class StateService {
    */
   private async dispatchWhatsAppOnStatusChange(repair: RepairRecord, newStatus: string): Promise<void> {
     try {
+      if (!repair.phone) return;
+
       const { supabase } = await import('./supabaseClient');
+      const phoneFmt = normalizePhone(repair.phone);
 
       // Load WhatsApp config
       const { data: config, error } = await supabase
@@ -581,10 +576,10 @@ export class StateService {
         .maybeSingle();
 
       if (error || !config || !config.enabled) {
-        return; // WhatsApp not enabled or error loading config
+        return; // WhatsApp not enabled
       }
 
-      // Determine template based on status using official template names
+      // Determine template based on status
       let templateName: 'crm_ready_for_pickup' | 'crm_cancelled' | null = null;
       if (config.finish_statuses?.includes(newStatus)) {
         templateName = 'crm_ready_for_pickup';
@@ -592,23 +587,14 @@ export class StateService {
         templateName = 'crm_cancelled';
       }
 
-      if (!templateName || !repair.phone) {
-        return; // No matching template or no phone number
-      }
+      if (!templateName) return;
 
-      // Generate log ID
       const logId = `wa_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 
-      // Build template variables based on official parameter order
       let variables: string[];
       if (templateName === 'crm_cancelled') {
-        // crm_cancelled: [name, repair_id]
-        variables = [
-          repair.customer_name,
-          repair.repair_id,
-        ];
+        variables = [repair.customer_name, repair.repair_id];
       } else {
-        // crm_ready_for_pickup: [name, brand, model, serial, repair_id, status, price_formatted]
         const priceFormatted = typeof repair.price === 'number'
           ? `${repair.price.toFixed(2)} USD`
           : String(repair.price);
@@ -623,19 +609,19 @@ export class StateService {
         ];
       }
 
-      // Create log entry with 'queued' status
+      // Always log to outbox
       await supabase.from('whatsapp_logs').insert({
         id: logId,
         repair_id: repair.repair_id,
         customer_name: repair.customer_name,
-        phone: repair.phone,
+        phone: phoneFmt,
         template_name: templateName,
         variables,
         status: 'queued',
         created_at: nowISO(),
       });
 
-      // If live API is configured, attempt to send
+      // If live API credentials present, attempt send
       if (config.phone_number_id && config.access_token) {
         try {
           const response = await fetch(getApiEndpoint('/api/whatsapp/send'), {
@@ -643,7 +629,7 @@ export class StateService {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               logId,
-              phone: repair.phone,
+              phone: phoneFmt,
               template: templateName,
               language: config.template_language || 'en_US',
               repairData: {
@@ -666,23 +652,16 @@ export class StateService {
           const data = await response.json();
 
           if (response.ok && data.success) {
-            await supabase
-              .from('whatsapp_logs')
-              .update({ status: 'sent', sent_at: nowISO() })
-              .eq('id', logId);
+            await supabase.from('whatsapp_logs').update({ status: 'sent', sent_at: nowISO() }).eq('id', logId);
           } else {
-            await supabase
-              .from('whatsapp_logs')
-              .update({ status: 'failed', error_message: data.error || 'API error' })
-              .eq('id', logId);
+            await supabase.from('whatsapp_logs').update({ status: 'failed', error_message: data.error || 'API error' }).eq('id', logId);
           }
         } catch (err) {
           const message = err instanceof Error ? err.message : 'Network error';
-          await supabase
-            .from('whatsapp_logs')
-            .update({ status: 'failed', error_message: message })
-            .eq('id', logId);
+          await supabase.from('whatsapp_logs').update({ status: 'failed', error_message: message }).eq('id', logId);
         }
+      } else {
+        console.info(`[WhatsApp Mock] ${templateName} queued (dev mode) for ${phoneFmt}`);
       }
     } catch (err) {
       console.warn('[stateService] dispatchWhatsAppOnStatusChange error:', err);
@@ -1110,15 +1089,14 @@ export class StateService {
 
       const { supabase } = await import('./supabaseClient');
 
+      // Normalize phone for WhatsApp (handles Lebanese +961 prefix)
+      const normalizedPhone = normalizePhone(supplier.phone);
+
       const { data: config, error } = await supabase
         .from('whatsapp_config')
         .select('*')
         .eq('id', 1)
         .maybeSingle();
-
-      if (error || !config || !config.enabled) {
-        return { success: false, error: 'WhatsApp integration is not enabled.' };
-      }
 
       const logId = `wa_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
       const messageBody = `Hi ${supplier.name}, please prepare ${restockQuantity} units of ${item.name} (SKU: ${item.sku}) for CyGnuS SARL. Thank you.`;
@@ -1129,11 +1107,12 @@ export class StateService {
         item.sku,
       ];
 
+      // Always log to outbox regardless of config state
       await supabase.from('whatsapp_logs').insert({
         id: logId,
         repair_id: `RESTOCK-${item.sku}`,
         customer_name: supplier.name,
-        phone: supplier.phone,
+        phone: normalizedPhone,
         template_name: 'crm_restock_order',
         variables,
         status: 'queued',
@@ -1157,42 +1136,45 @@ export class StateService {
           : prev.activities,
       }));
 
-      if (config.phone_number_id && config.access_token) {
-        try {
-          const response = await fetch(getApiEndpoint('/api/whatsapp/send'), {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              logId,
-              phone: supplier.phone,
-              template: 'crm_restock_order',
-              language: config.template_language || 'en_US',
-              variables,
-              messageBody,
-              config: {
-                phone_number_id: config.phone_number_id,
-                access_token: config.access_token,
-                api_version: config.api_version || 'v22.0',
-              },
-            }),
-          });
-          const data = await response.json();
-          if (response.ok && data.success) {
-            await supabase.from('whatsapp_logs').update({ status: 'sent', sent_at: nowISO() }).eq('id', logId);
-            return { success: true };
-          } else {
-            const errMsg = data.error || 'API error';
-            await supabase.from('whatsapp_logs').update({ status: 'failed', error_message: errMsg }).eq('id', logId);
-            return { success: false, error: errMsg };
-          }
-        } catch (err) {
-          const msg = err instanceof Error ? err.message : 'Network error';
-          await supabase.from('whatsapp_logs').update({ status: 'failed', error_message: msg }).eq('id', logId);
-          return { success: false, error: msg };
-        }
+      // If WhatsApp is not enabled or config is missing, treat as mock/dev mode
+      if (error || !config || !config.enabled || !config.phone_number_id || !config.access_token) {
+        console.info(`[WhatsApp Mock] Restock order queued (dev mode):\n  To: ${normalizedPhone}\n  Message: ${messageBody}`);
+        return { success: true };
       }
 
-      return { success: true };
+      // Live mode — send via gateway
+      try {
+        const response = await fetch(getApiEndpoint('/api/whatsapp/send'), {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            logId,
+            phone: normalizedPhone,
+            template: 'crm_restock_order',
+            language: config.template_language || 'en_US',
+            variables,
+            messageBody,
+            config: {
+              phone_number_id: config.phone_number_id,
+              access_token: config.access_token,
+              api_version: config.api_version || 'v22.0',
+            },
+          }),
+        });
+        const data = await response.json();
+        if (response.ok && data.success) {
+          await supabase.from('whatsapp_logs').update({ status: 'sent', sent_at: nowISO() }).eq('id', logId);
+          return { success: true };
+        } else {
+          const errMsg = data.error || 'API error';
+          await supabase.from('whatsapp_logs').update({ status: 'failed', error_message: errMsg }).eq('id', logId);
+          return { success: false, error: errMsg };
+        }
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : 'Network error';
+        await supabase.from('whatsapp_logs').update({ status: 'failed', error_message: msg }).eq('id', logId);
+        return { success: false, error: msg };
+      }
     } catch (err) {
       console.warn('[stateService] sendManualRestockOrder error:', err);
       return { success: false, error: err instanceof Error ? err.message : 'Unknown error' };

@@ -105,6 +105,11 @@ const WHATSAPP_TEMPLATES = {
     paramCount: 2,
     description: 'Repair order cancelled',
   },
+  crm_restock_order: {
+    name: 'crm_restock_order',
+    paramCount: 4,
+    description: 'Manual restock order to supplier',
+  },
   // Legacy templates (kept for backward compatibility)
   order_received: { name: 'crm_received', paramCount: 6, legacy: true },
   order_finished: { name: 'crm_ready_for_pickup', paramCount: 7, legacy: true },
@@ -162,6 +167,10 @@ function buildTemplateParams(template, data) {
         data.name || data.customer_name || '',
         data.repair_id || '',
       ];
+
+    case 'crm_restock_order':
+      // [supplier_name, quantity, item_name, sku]
+      return data.variables || [];
 
     default:
       // Fallback to provided variables array
