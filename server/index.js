@@ -92,12 +92,12 @@ app.use(express.json());
 const WHATSAPP_TEMPLATES = {
   crm_received: {
     name: 'crm_received',
-    paramCount: 3,
+    paramCount: 6,
     description: 'New repair order received',
   },
   crm_ready_for_pickup: {
     name: 'crm_ready_for_pickup',
-    paramCount: 3,
+    paramCount: 7,
     description: 'Repair completed, ready for pickup',
   },
   crm_cancelled: {
@@ -111,8 +111,8 @@ const WHATSAPP_TEMPLATES = {
     description: 'Manual restock order to supplier',
   },
   // Legacy templates (kept for backward compatibility)
-  order_received: { name: 'crm_received', paramCount: 3, legacy: true },
-  order_finished: { name: 'crm_ready_for_pickup', paramCount: 3, legacy: true },
+  order_received: { name: 'crm_received', paramCount: 6, legacy: true },
+  order_finished: { name: 'crm_ready_for_pickup', paramCount: 7, legacy: true },
   order_cancelled: { name: 'crm_cancelled', paramCount: 2, legacy: true },
 };
 
@@ -137,34 +137,43 @@ function buildTemplateParams(template, data) {
 
   switch (resolvedTemplate) {
     case 'crm_received':
-      // [customer_name, repair_id, status]
+      // 6 params: [customer_name, brand, model, serial, repair_id, status]
       return [
         data.name || data.customer_name || '',
+        data.brand || '',
+        data.model || '',
+        data.serial || '',
         data.repair_id || '',
         data.status || '',
       ];
 
-    case 'crm_ready_for_pickup':
-      // [customer_name, repair_id, status]
+    case 'crm_ready_for_pickup': {
+      // 7 params: [customer_name, brand, model, serial, repair_id, status, price]
+      const price = data.price || 0;
+      const priceFormatted = typeof price === 'number' ? `${price.toFixed(2)} USD` : String(price);
       return [
         data.name || data.customer_name || '',
+        data.brand || '',
+        data.model || '',
+        data.serial || '',
         data.repair_id || '',
         data.status || '',
+        priceFormatted,
       ];
+    }
 
     case 'crm_cancelled':
-      // [customer_name, repair_id]
+      // 2 params: [customer_name, repair_id]
       return [
         data.name || data.customer_name || '',
         data.repair_id || '',
       ];
 
     case 'crm_restock_order':
-      // [supplier_name, quantity, item_name, sku]
+      // 4 params: [supplier_name, quantity, item_name, sku]
       return data.variables || [];
 
     default:
-      // Fallback to provided variables array
       return data.variables || [];
   }
 }

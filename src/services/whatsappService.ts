@@ -267,16 +267,21 @@ export function getTemplateForStatus(
 
 /**
  * Generate template variables from repair record.
- * Meta-approved parameter counts:
- *  - crm_received: 3 [customer_name, repair_id, status]
- *  - crm_ready_for_pickup: 3 [customer_name, repair_id, status]
+ * Meta Dashboard parameter counts:
+ *  - crm_received: 6 [customer_name, brand, model, serial, repair_id, status]
+ *  - crm_ready_for_pickup: 7 [customer_name, brand, model, serial, repair_id, status, price]
  *  - crm_cancelled: 2 [customer_name, repair_id]
  */
 export function getTemplateVariables(repair: RepairRecord, templateName?: string): string[] {
   if (templateName === 'order_cancelled' || templateName === 'crm_cancelled') {
     return [repair.customer_name, repair.repair_id];
   }
-  return [repair.customer_name, repair.repair_id, repair.status];
+  if (templateName === 'order_finished' || templateName === 'crm_ready_for_pickup') {
+    const price = typeof repair.price === 'number' ? `${repair.price.toFixed(2)} USD` : String(repair.price);
+    return [repair.customer_name, repair.brand, repair.model, repair.serial || '', repair.repair_id, repair.status, price];
+  }
+  // crm_received / order_received (default)
+  return [repair.customer_name, repair.brand, repair.model, repair.serial || '', repair.repair_id, repair.status];
 }
 
 /**

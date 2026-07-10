@@ -399,6 +399,9 @@ export class StateService {
       const logId = `wa_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
       const variables = [
         repair.customer_name,
+        repair.brand || '',
+        repair.model || '',
+        repair.serial || '',
         repair.repair_id,
         repair.status,
       ];
@@ -592,7 +595,18 @@ export class StateService {
       if (templateName === 'crm_cancelled') {
         variables = [repair.customer_name, repair.repair_id];
       } else {
-        variables = [repair.customer_name, repair.repair_id, repair.status];
+        const priceFormatted = typeof repair.price === 'number'
+          ? `${repair.price.toFixed(2)} USD`
+          : String(repair.price);
+        variables = [
+          repair.customer_name,
+          repair.brand,
+          repair.model,
+          repair.serial || '',
+          repair.repair_id,
+          repair.status,
+          priceFormatted,
+        ];
       }
 
       // Always log to outbox
