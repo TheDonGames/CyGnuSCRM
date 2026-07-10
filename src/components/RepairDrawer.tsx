@@ -128,6 +128,7 @@ export function RepairDrawer({ open, onClose, editingRepair }: RepairDrawerProps
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [showDirtyConfirm, setShowDirtyConfirm] = useState(false);
   const [activeTab, setActiveTab] = useState<'form' | 'automation'>('form');
+  const [clientTab, setClientTab] = useState<'individual' | 'corporate'>('individual');
   const [telemetry, setTelemetry] = useState<AutomationTelemetryEntry[]>([]);
   const [muted, setMuted] = useState(false);
   const initializedRef = useRef(false);
@@ -162,6 +163,7 @@ export function RepairDrawer({ open, onClose, editingRepair }: RepairDrawerProps
       return;
     }
     if (editingRepair) {
+      setClientTab(editingRepair.is_corporate ? 'corporate' : 'individual');
       setForm({
         customer_name: editingRepair.customer_name,
         phone: editingRepair.phone,
@@ -195,6 +197,7 @@ export function RepairDrawer({ open, onClose, editingRepair }: RepairDrawerProps
         corporate_website: editingRepair.corporate_website ?? '',
       });
     } else {
+      setClientTab('individual');
       setForm(EMPTY_FORM);
     }
     setErrors({});
@@ -425,6 +428,41 @@ export function RepairDrawer({ open, onClose, editingRepair }: RepairDrawerProps
           <div className="space-y-6 px-6 py-5">
             {/* SECTION A: Customer Intake Metadata */}
             <Section icon={<User className="h-4 w-4" />} title="Section A — Customer Intake Metadata">
+              {/* Client type tab switcher */}
+              <div className="mb-4 flex rounded-xl border border-gray-200 dark:border-slate-700 bg-gray-100 dark:bg-slate-800/60 p-1 gap-1">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setClientTab('individual');
+                    handleChange('is_corporate', false);
+                  }}
+                  className={`flex flex-1 items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition-all ${
+                    clientTab === 'individual'
+                      ? 'bg-white dark:bg-slate-700 text-gray-900 dark:text-slate-100 shadow-sm ring-1 ring-gray-200 dark:ring-slate-600'
+                      : 'text-gray-500 dark:text-slate-400 hover:text-gray-700 dark:hover:text-slate-300'
+                  }`}
+                >
+                  <User className="h-3.5 w-3.5" />
+                  Individual Client
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setClientTab('corporate');
+                    handleChange('is_corporate', true);
+                  }}
+                  className={`flex flex-1 items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition-all ${
+                    clientTab === 'corporate'
+                      ? 'bg-white dark:bg-slate-700 text-brand-700 dark:text-brand-400 shadow-sm ring-1 ring-brand-200 dark:ring-brand-700'
+                      : 'text-gray-500 dark:text-slate-400 hover:text-gray-700 dark:hover:text-slate-300'
+                  }`}
+                >
+                  <Building2 className="h-3.5 w-3.5" />
+                  Corporate / B2B
+                </button>
+              </div>
+
+              {/* Standard customer fields — always visible */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <Field label="Customer Full Name" required error={errors.customer_name}>
                   <input
@@ -463,89 +501,54 @@ export function RepairDrawer({ open, onClose, editingRepair }: RepairDrawerProps
                 </Field>
               </div>
 
-              {/* Corporate / B2B Toggle */}
-              <div className="mt-4">
-                <div
-                  className={`flex items-center justify-between rounded-xl border-2 px-4 py-3 transition-all cursor-pointer ${
-                    form.is_corporate
-                      ? 'border-brand-400 dark:border-brand-600 bg-brand-50 dark:bg-brand-950/20'
-                      : 'border-gray-200 dark:border-slate-700 bg-gray-50 dark:bg-slate-800/40 hover:border-gray-300 dark:hover:border-slate-600'
-                  }`}
-                  onClick={() => handleChange('is_corporate', !form.is_corporate)}
-                >
-                  <div className="flex items-center gap-3">
-                    <div className={`flex h-9 w-9 items-center justify-center rounded-lg ${
-                      form.is_corporate
-                        ? 'bg-brand-100 dark:bg-brand-900/40 text-brand-600 dark:text-brand-400'
-                        : 'bg-gray-100 dark:bg-slate-700 text-gray-400 dark:text-slate-500'
-                    }`}>
-                      <Building2 className="h-4 w-4" />
-                    </div>
-                    <div>
-                      <p className={`text-sm font-semibold ${
-                        form.is_corporate ? 'text-brand-700 dark:text-brand-300' : 'text-gray-700 dark:text-slate-300'
-                      }`}>Corporate / B2B Client</p>
-                      <p className="text-xs text-gray-400 dark:text-slate-500 mt-0.5">
-                        {form.is_corporate ? 'Business fields enabled — MOF & company details required' : 'Enable for business invoicing with VAT & MOF registration'}
-                      </p>
-                    </div>
+              {/* Corporate fields — only when Corporate tab is active */}
+              {clientTab === 'corporate' && (
+                <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-4 rounded-xl border border-brand-200 dark:border-brand-800/50 bg-brand-50/40 dark:bg-brand-950/10 p-4 animate-fade-in">
+                  <div className="sm:col-span-2">
+                    <p className="text-xs font-semibold text-brand-600 dark:text-brand-400 uppercase tracking-wider mb-3 flex items-center gap-1.5">
+                      <Building2 className="h-3.5 w-3.5" />
+                      Business / B2B Details
+                    </p>
                   </div>
-                  <button
-                    type="button"
-                    onClick={(e) => { e.stopPropagation(); handleChange('is_corporate', !form.is_corporate); }}
-                    className={`relative inline-flex h-6 w-11 flex-shrink-0 items-center rounded-full transition-colors ${
-                      form.is_corporate ? 'bg-brand-600' : 'bg-gray-300 dark:bg-slate-600'
-                    }`}
-                  >
-                    <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${
-                      form.is_corporate ? 'translate-x-6' : 'translate-x-1'
-                    }`} />
-                  </button>
+                  <Field label="MOF# (Ministry of Finance)">
+                    <input
+                      className="input"
+                      value={form.corporate_mof}
+                      onChange={(e) => handleChange('corporate_mof', e.target.value)}
+                      placeholder="e.g. 123456-789"
+                    />
+                  </Field>
+                  <Field label="Business Email">
+                    <input
+                      type="email"
+                      className="input"
+                      value={form.corporate_email}
+                      onChange={(e) => handleChange('corporate_email', e.target.value)}
+                      placeholder="billing@company.com"
+                    />
+                  </Field>
+                  <div className="sm:col-span-2">
+                    <Field label="Business Address">
+                      <input
+                        className="input"
+                        value={form.corporate_address}
+                        onChange={(e) => handleChange('corporate_address', e.target.value)}
+                        placeholder="Company street address, city, country"
+                      />
+                    </Field>
+                  </div>
+                  <div className="sm:col-span-2">
+                    <Field label="Business Website">
+                      <input
+                        className="input"
+                        value={form.corporate_website}
+                        onChange={(e) => handleChange('corporate_website', e.target.value)}
+                        placeholder="https://company.com"
+                      />
+                    </Field>
+                  </div>
                 </div>
-
-                {/* Corporate fields — revealed when toggle is on */}
-                {form.is_corporate && (
-                  <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-4 rounded-xl border border-brand-200 dark:border-brand-800/40 bg-brand-50/30 dark:bg-brand-950/10 p-4 animate-fade-in">
-                    <Field label="MOF# (Ministry of Finance)">
-                      <input
-                        className="input"
-                        value={form.corporate_mof}
-                        onChange={(e) => handleChange('corporate_mof', e.target.value)}
-                        placeholder="e.g. 123456-789"
-                      />
-                    </Field>
-                    <Field label="Business Email">
-                      <input
-                        type="email"
-                        className="input"
-                        value={form.corporate_email}
-                        onChange={(e) => handleChange('corporate_email', e.target.value)}
-                        placeholder="billing@company.com"
-                      />
-                    </Field>
-                    <div className="sm:col-span-2">
-                      <Field label="Business Address">
-                        <input
-                          className="input"
-                          value={form.corporate_address}
-                          onChange={(e) => handleChange('corporate_address', e.target.value)}
-                          placeholder="Company street address, city, country"
-                        />
-                      </Field>
-                    </div>
-                    <div className="sm:col-span-2">
-                      <Field label="Business Website">
-                        <input
-                          className="input"
-                          value={form.corporate_website}
-                          onChange={(e) => handleChange('corporate_website', e.target.value)}
-                          placeholder="https://company.com"
-                        />
-                      </Field>
-                    </div>
-                  </div>
-                )}
-              </div>
+              )}
             </Section>
 
             {/* SECTION B: Device Identity & Physical Audit */}
