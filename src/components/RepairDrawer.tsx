@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
-import { X, AlertCircle, User, Smartphone, Settings, DollarSign, Bot, BellOff, History } from 'lucide-react';
+import { X, AlertCircle, User, Smartphone, Settings, DollarSign, Bot, BellOff, History, Building2 } from 'lucide-react';
 import { useStore } from '../context/StoreContext';
 import { showToast } from './Toast';
 import { automationEngine, type AutomationTelemetryEntry, type TelemetryOutcome } from '../services/automationEngine';
@@ -67,6 +67,12 @@ interface RepairForm {
   device_notes: string;
   warranty: number;
   notes: string;
+  // Corporate / B2B fields
+  is_corporate: boolean;
+  corporate_mof: string;
+  corporate_address: string;
+  corporate_email: string;
+  corporate_website: string;
 }
 
 const EMPTY_FORM: RepairForm = {
@@ -95,6 +101,11 @@ const EMPTY_FORM: RepairForm = {
   device_notes: '',
   warranty: 0,
   notes: '',
+  is_corporate: false,
+  corporate_mof: '',
+  corporate_address: '',
+  corporate_email: '',
+  corporate_website: '',
 };
 
 // ============================================================
@@ -177,6 +188,11 @@ export function RepairDrawer({ open, onClose, editingRepair }: RepairDrawerProps
         device_notes: editingRepair.device_notes,
         warranty: editingRepair.warranty,
         notes: editingRepair.notes,
+        is_corporate: editingRepair.is_corporate ?? false,
+        corporate_mof: editingRepair.corporate_mof ?? '',
+        corporate_address: editingRepair.corporate_address ?? '',
+        corporate_email: editingRepair.corporate_email ?? '',
+        corporate_website: editingRepair.corporate_website ?? '',
       });
     } else {
       setForm(EMPTY_FORM);
@@ -303,6 +319,11 @@ export function RepairDrawer({ open, onClose, editingRepair }: RepairDrawerProps
         device_notes: form.device_notes,
         warranty: Number(form.warranty) || 0,
         notes: form.notes,
+        is_corporate: form.is_corporate,
+        corporate_mof: form.corporate_mof,
+        corporate_address: form.corporate_address,
+        corporate_email: form.corporate_email,
+        corporate_website: form.corporate_website,
       });
       showToast('success', `Repair ${editingRepair.repair_id} updated`);
     } else {
@@ -329,6 +350,11 @@ export function RepairDrawer({ open, onClose, editingRepair }: RepairDrawerProps
         warranty: Number(form.warranty) || 0,
         price: Number(finalFee) || 0,
         notes: form.notes,
+        is_corporate: form.is_corporate,
+        corporate_mof: form.corporate_mof,
+        corporate_address: form.corporate_address,
+        corporate_email: form.corporate_email,
+        corporate_website: form.corporate_website,
       });
       showToast('success', `Repair ${repairId} created`);
     }
@@ -435,6 +461,90 @@ export function RepairDrawer({ open, onClose, editingRepair }: RepairDrawerProps
                     ))}
                   </select>
                 </Field>
+              </div>
+
+              {/* Corporate / B2B Toggle */}
+              <div className="mt-4">
+                <div
+                  className={`flex items-center justify-between rounded-xl border-2 px-4 py-3 transition-all cursor-pointer ${
+                    form.is_corporate
+                      ? 'border-brand-400 dark:border-brand-600 bg-brand-50 dark:bg-brand-950/20'
+                      : 'border-gray-200 dark:border-slate-700 bg-gray-50 dark:bg-slate-800/40 hover:border-gray-300 dark:hover:border-slate-600'
+                  }`}
+                  onClick={() => handleChange('is_corporate', !form.is_corporate)}
+                >
+                  <div className="flex items-center gap-3">
+                    <div className={`flex h-9 w-9 items-center justify-center rounded-lg ${
+                      form.is_corporate
+                        ? 'bg-brand-100 dark:bg-brand-900/40 text-brand-600 dark:text-brand-400'
+                        : 'bg-gray-100 dark:bg-slate-700 text-gray-400 dark:text-slate-500'
+                    }`}>
+                      <Building2 className="h-4 w-4" />
+                    </div>
+                    <div>
+                      <p className={`text-sm font-semibold ${
+                        form.is_corporate ? 'text-brand-700 dark:text-brand-300' : 'text-gray-700 dark:text-slate-300'
+                      }`}>Corporate / B2B Client</p>
+                      <p className="text-xs text-gray-400 dark:text-slate-500 mt-0.5">
+                        {form.is_corporate ? 'Business fields enabled — MOF & company details required' : 'Enable for business invoicing with VAT & MOF registration'}
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={(e) => { e.stopPropagation(); handleChange('is_corporate', !form.is_corporate); }}
+                    className={`relative inline-flex h-6 w-11 flex-shrink-0 items-center rounded-full transition-colors ${
+                      form.is_corporate ? 'bg-brand-600' : 'bg-gray-300 dark:bg-slate-600'
+                    }`}
+                  >
+                    <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${
+                      form.is_corporate ? 'translate-x-6' : 'translate-x-1'
+                    }`} />
+                  </button>
+                </div>
+
+                {/* Corporate fields — revealed when toggle is on */}
+                {form.is_corporate && (
+                  <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-4 rounded-xl border border-brand-200 dark:border-brand-800/40 bg-brand-50/30 dark:bg-brand-950/10 p-4 animate-fade-in">
+                    <Field label="MOF# (Ministry of Finance)">
+                      <input
+                        className="input"
+                        value={form.corporate_mof}
+                        onChange={(e) => handleChange('corporate_mof', e.target.value)}
+                        placeholder="e.g. 123456-789"
+                      />
+                    </Field>
+                    <Field label="Business Email">
+                      <input
+                        type="email"
+                        className="input"
+                        value={form.corporate_email}
+                        onChange={(e) => handleChange('corporate_email', e.target.value)}
+                        placeholder="billing@company.com"
+                      />
+                    </Field>
+                    <div className="sm:col-span-2">
+                      <Field label="Business Address">
+                        <input
+                          className="input"
+                          value={form.corporate_address}
+                          onChange={(e) => handleChange('corporate_address', e.target.value)}
+                          placeholder="Company street address, city, country"
+                        />
+                      </Field>
+                    </div>
+                    <div className="sm:col-span-2">
+                      <Field label="Business Website">
+                        <input
+                          className="input"
+                          value={form.corporate_website}
+                          onChange={(e) => handleChange('corporate_website', e.target.value)}
+                          placeholder="https://company.com"
+                        />
+                      </Field>
+                    </div>
+                  </div>
+                )}
               </div>
             </Section>
 
