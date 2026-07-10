@@ -129,6 +129,31 @@ export function RepairFormModal({ open, onClose, editingRepair }: RepairFormModa
     setForm((prev) => ({ ...prev, [field]: value }));
   };
 
+  // Upsert: when phone changes, auto-link to existing customer profile
+  const handlePhoneBlur = () => {
+    if (editingRepair || !form.phone.trim()) return;
+    const normInput = form.phone.replace(/\D/g, '');
+    if (!normInput) return;
+    const match = state.repairs.find((r) => {
+      const normExisting = (r.phone_norm || r.phone || '').replace(/\D/g, '');
+      return normExisting === normInput || normExisting.endsWith(normInput) || normInput.endsWith(normExisting);
+    });
+    if (match && !form.customer_name.trim()) {
+      setForm((prev) => ({
+        ...prev,
+        customer_name: match.customer_name,
+        email: match.email || prev.email,
+        address: match.address || prev.address,
+        is_corporate: match.is_corporate ?? prev.is_corporate,
+        corporate_mof: match.corporate_mof || prev.corporate_mof,
+        corporate_address: match.corporate_address || prev.corporate_address,
+        corporate_email: match.corporate_email || prev.corporate_email,
+        corporate_website: match.corporate_website || prev.corporate_website,
+      }));
+      showToast('success', `Linked to existing customer: ${match.customer_name}`);
+    }
+  };
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
 
@@ -137,12 +162,30 @@ export function RepairFormModal({ open, onClose, editingRepair }: RepairFormModa
       return;
     }
 
+    // Upsert: normalize customer data to match existing profile by phone
+    const normPhone = form.phone.replace(/\D/g, '');
+    let finalForm = { ...form };
+    if (!editingRepair && normPhone) {
+      const existingRepair = state.repairs.find((r) => {
+        const normExisting = (r.phone_norm || r.phone || '').replace(/\D/g, '');
+        return normExisting === normPhone || normExisting.endsWith(normPhone) || normPhone.endsWith(normExisting);
+      });
+      if (existingRepair) {
+        finalForm = {
+          ...finalForm,
+          customer_name: finalForm.customer_name || existingRepair.customer_name,
+          email: finalForm.email || existingRepair.email,
+          address: finalForm.address || existingRepair.address,
+        };
+      }
+    }
+
     const formData = {
-      ...form,
-      date_out: form.date_out || null,
-      warranty: Number(form.warranty) || 0,
-      price: Number(form.price) || 0,
-      is_corporate: Boolean(form.is_corporate),
+      ...finalForm,
+      date_out: finalForm.date_out || null,
+      warranty: Number(finalForm.warranty) || 0,
+      price: Number(finalForm.price) || 0,
+      is_corporate: Boolean(finalForm.is_corporate),
     };
 
     if (editingRepair) {
@@ -216,7 +259,7 @@ export function RepairFormModal({ open, onClose, editingRepair }: RepairFormModa
                 </div>
                 <div>
                   <label className={labelCls}>Phone</label>
-                  <input className={inputCls} value={form.phone} onChange={(e) => handleChange('phone', e.target.value)} placeholder="+1 (555) 123-4567" />
+                  <input className={inputCls} value={form.phone} onChange={(e) => handleChange('phone', e.target.value)} onBlur={handlePhoneBlur} placeholder="+1 (555) 123-4567" />
                 </div>
                 <div>
                   <label className={labelCls}>Email</label>
