@@ -3,9 +3,9 @@
  * Bidirectional sync between in-memory AppState and Supabase.
  *
  * Strategy:
- *  • On app startup: load all tables from Supabase and hydrate state.
- *  • On each state mutation: debounced upsert of affected slices.
- *  • Graceful fallback: if Supabase is unavailable the app continues
+ *  - On app startup: load all tables from Supabase and hydrate state.
+ *  - On each state mutation: immediate upsert of affected slice(s).
+ *  - Graceful fallback: if Supabase is unavailable the app continues
  *    with localStorage only.
  */
 import { supabase } from './supabaseClient';
@@ -41,6 +41,16 @@ async function safeUpsert<T extends object>(
   const { error } = await supabase.from(table).upsert(rows, { onConflict });
   if (error) {
     console.warn(`[supabaseSync] upsert ${table} failed:`, error.message);
+    return false;
+  }
+  return true;
+}
+
+async function safeDelete(table: string, ids: string[]): Promise<boolean> {
+  if (!ids.length) return true;
+  const { error } = await supabase.from(table).delete().in('id', ids);
+  if (error) {
+    console.warn(`[supabaseSync] delete ${table} failed:`, error.message);
     return false;
   }
   return true;
@@ -83,24 +93,18 @@ export async function loadFromSupabase(): Promise<Partial<AppState> | null> {
       usersRes.error?.message?.includes('does not exist') ||
       repairsRes.error?.message?.includes('does not exist')
     ) {
-      console.info('[supabaseSync] Tables not yet created. Run supabase/schema.sql first.');
+      console.info('[supabaseSync] Tables not yet created.');
       return null;
     }
 
-    // No data at all — first run, let seed state populate then sync up
-    const hasData =
-      (usersRes.data?.length ?? 0) > 0 ||
-      (repairsRes.data?.length ?? 0) > 0 ||
-      (inventoryRes.data?.length ?? 0) > 0;
-
-    if (!hasData) return null;
-
+    // Build partial state from whatever Supabase has.
+    // Even if empty, we return an object so the caller knows Supabase is reachable.
     const partial: Partial<AppState> = {};
 
     if (usersRes.data?.length) {
       partial.users = usersRes.data.map((u) => ({
         ...u,
-        is_active: false, // recomputed in stateService.loadState
+        is_active: false,
       })) as User[];
     }
 
@@ -155,41 +159,91 @@ export async function loadFromSupabase(): Promise<Partial<AppState> | null> {
 }
 
 // ============================================================
-// Sync slices to Supabase
+// Immediate single-record sync (no debounce)
+// These fire right after a mutation so the DB has the data
+// before the user could refresh.
 // ============================================================
 
-export async function syncUsersToSupabase(users: User[]): Promise<void> {
-  if (!isSupabaseConfigured()) return;
-  const rows = users.map(({ is_active: _ia, ...rest }) => rest); // is_active is derived
-  await safeUpsert('users', rows);
+export async function syncRepairImmediately(repair: RepairRecord): Promise<boolean> {
+  if (!isSupabaseConfigured()) return false;
+  return safeUpsert('repairs', [repair]);
 }
 
-export async function syncRepairsToSupabase(repairs: RepairRecord[]): Promise<void> {
-  if (!isSupabaseConfigured()) return;
-  await safeUpsert('repairs', repairs);
+export async function deleteRepairFromSupabase(id: string): Promise<boolean> {
+  if (!isSupabaseConfigured()) return false;
+  return safeDelete('repairs', [id]);
 }
 
-export async function syncActivitiesToSupabase(activities: UserActivity[]): Promise<void> {
-  if (!isSupabaseConfigured()) return;
-  // Only sync the newest 200 to avoid hammering the DB on every state change
-  await safeUpsert('activities', activities.slice(0, 200));
+export async function syncUserImmediately(user: Omit<User, 'is_active'>): Promise<boolean> {
+  if (!isSupabaseConfigured()) return false;
+  return safeUpsert('users', [user]);
 }
 
-export async function syncLogsToSupabase(logs: RecordLog[]): Promise<void> {
-  if (!isSupabaseConfigured()) return;
-  await safeUpsert('repair_logs', logs.slice(0, 500));
+export async function deleteUserFromSupabase(id: string): Promise<boolean> {
+  if (!isSupabaseConfigured()) return false;
+  return safeDelete('users', [id]);
+}
+
+export async function syncInventoryItemImmediately(item: InventoryItem): Promise<boolean> {
+  if (!isSupabaseConfigured()) return false;
+  return safeUpsert('inventory_items', [item]);
+}
+
+export async function deleteInventoryItemFromSupabase(id: string): Promise<boolean> {
+  if (!isSupabaseConfigured()) return false;
+  return safeDelete('inventory_items', [id]);
+}
+
+export async function syncInventoryTransactionImmediately(tx: InventoryTransaction): Promise<boolean> {
+  if (!isSupabaseConfigured()) return false;
+  return safeUpsert('inventory_transactions', [tx]);
+}
+
+export async function syncSupplierImmediately(supplier: Supplier): Promise<boolean> {
+  if (!isSupabaseConfigured()) return false;
+  return safeUpsert('suppliers', [supplier]);
+}
+
+export async function deleteSupplierFromSupabase(id: string): Promise<boolean> {
+  if (!isSupabaseConfigured()) return false;
+  return safeDelete('suppliers', [id]);
+}
+
+// ============================================================
+// Batch sync slices to Supabase
+// ============================================================
+
+export async function syncUsersToSupabase(users: User[]): Promise<boolean> {
+  if (!isSupabaseConfigured()) return true;
+  const rows = users.map(({ is_active: _ia, ...rest }) => rest);
+  return safeUpsert('users', rows);
+}
+
+export async function syncRepairsToSupabase(repairs: RepairRecord[]): Promise<boolean> {
+  if (!isSupabaseConfigured()) return true;
+  return safeUpsert('repairs', repairs);
+}
+
+export async function syncActivitiesToSupabase(activities: UserActivity[]): Promise<boolean> {
+  if (!isSupabaseConfigured()) return true;
+  return safeUpsert('activities', activities.slice(0, 200));
+}
+
+export async function syncLogsToSupabase(logs: RecordLog[]): Promise<boolean> {
+  if (!isSupabaseConfigured()) return true;
+  return safeUpsert('repair_logs', logs.slice(0, 500));
 }
 
 export async function syncNotificationsToSupabase(
   notifications: NotificationOutbox[]
-): Promise<void> {
-  if (!isSupabaseConfigured()) return;
-  await safeUpsert('notifications', notifications.slice(0, 300));
+): Promise<boolean> {
+  if (!isSupabaseConfigured()) return true;
+  return safeUpsert('notifications', notifications.slice(0, 300));
 }
 
-export async function syncRulesToSupabase(rules: AutoNotifyRule[]): Promise<void> {
-  if (!isSupabaseConfigured()) return;
-  await safeUpsert('auto_notify_rules', rules);
+export async function syncRulesToSupabase(rules: AutoNotifyRule[]): Promise<boolean> {
+  if (!isSupabaseConfigured()) return true;
+  return safeUpsert('auto_notify_rules', rules);
 }
 
 export async function syncConfigToSupabase(config: AppState['config']): Promise<boolean> {
@@ -204,23 +258,22 @@ export async function syncConfigToSupabase(config: AppState['config']): Promise<
   return true;
 }
 
-export async function syncInventoryItemsToSupabase(items: InventoryItem[]): Promise<void> {
-  if (!isSupabaseConfigured()) return;
-  await safeUpsert('inventory_items', items);
+export async function syncInventoryItemsToSupabase(items: InventoryItem[]): Promise<boolean> {
+  if (!isSupabaseConfigured()) return true;
+  return safeUpsert('inventory_items', items);
 }
 
 export async function syncInventoryTransactionsToSupabase(
   txs: InventoryTransaction[]
-): Promise<void> {
-  if (!isSupabaseConfigured()) return;
-  await safeUpsert('inventory_transactions', txs.slice(0, 500));
+): Promise<boolean> {
+  if (!isSupabaseConfigured()) return true;
+  return safeUpsert('inventory_transactions', txs.slice(0, 500));
 }
 
-export async function syncSuppliersToSupabase(
-  suppliers: Supplier[]
-): Promise<void> {
-  if (!isSupabaseConfigured() || suppliers.length === 0) return;
-  await safeUpsert('suppliers', suppliers);
+export async function syncSuppliersToSupabase(suppliers: Supplier[]): Promise<boolean> {
+  if (!isSupabaseConfigured()) return true;
+  if (suppliers.length === 0) return true;
+  return safeUpsert('suppliers', suppliers);
 }
 
 // ============================================================

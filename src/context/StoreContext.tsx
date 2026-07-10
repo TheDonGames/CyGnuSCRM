@@ -18,26 +18,27 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [service] = useState(() => new StateService(loadState()));
   const [state, setState] = useState<AppState>(service.getState());
   const [dbStatus, setDbStatus] = useState<DbStatus>('connecting');
-  // Use a ref so sync callbacks always see the current status without stale closure
   const dbStatusRef = useRef<DbStatus>('connecting');
   const heartbeatRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const syncTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const isInitialLoad = useRef(true);
+  const suppressSyncRef = useRef(true);
 
   const updateDbStatus = useCallback((s: DbStatus) => {
     dbStatusRef.current = s;
     setDbStatus(s);
   }, []);
 
-  // Load from Supabase on mount — replace local state if Supabase has data
+  // Load from Supabase on mount — Supabase is the source of truth
   useEffect(() => {
     loadFromSupabase()
       .then((supabaseState) => {
         if (supabaseState) {
+          // Supabase returned data — merge it in (it overrides localStorage)
           service.mergeExternalState(supabaseState);
           updateDbStatus('connected');
         } else {
-          // No Supabase data yet — try to push seed state up; mark connected on success
+          // Supabase is reachable but empty (or tables missing).
+          // Push current local state up so future refreshes find it.
           syncStateToSupabase(service.getState())
             .then((ok) => updateDbStatus(ok ? 'connected' : 'offline'))
             .catch(() => updateDbStatus('offline'));
@@ -45,10 +46,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       })
       .catch(() => {
         updateDbStatus('offline');
+      })
+      .finally(() => {
+        // Allow debounced syncs from this point on
+        suppressSyncRef.current = false;
       });
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Subscribe to state changes — re-render + debounced Supabase sync
+  // Subscribe to state changes — re-render + debounced Supabase sync for non-critical data
   useEffect(() => {
     automationEngine.initialize(service.getState());
     const unsub = service.subscribe(() => {
@@ -56,16 +61,13 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       setState(newState);
       automationEngine.onStateChange(newState);
 
-      // Skip the very first subscriber call (initial load hydration)
-      if (isInitialLoad.current) {
-        isInitialLoad.current = false;
-        return;
-      }
+      // Skip sync during initial hydration from Supabase
+      if (suppressSyncRef.current) return;
 
-      // Debounce: wait 1.5 s of quiet before syncing to Supabase
+      // Debounced full sync handles activities, logs, notifications, config
+      // (individual records are already synced immediately by stateService)
       if (syncTimerRef.current) clearTimeout(syncTimerRef.current);
       syncTimerRef.current = setTimeout(() => {
-        // Read from ref — never stale
         if (dbStatusRef.current !== 'offline') {
           syncStateToSupabase(newState)
             .then((ok) => updateDbStatus(ok ? 'connected' : 'offline'))

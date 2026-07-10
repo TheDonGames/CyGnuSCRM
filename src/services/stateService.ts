@@ -23,6 +23,17 @@ import {
   createRecordLog,
 } from '../utils/helpers';
 import { getApiEndpoint } from '../utils/api';
+import {
+  syncRepairImmediately,
+  deleteRepairFromSupabase,
+  syncUserImmediately,
+  deleteUserFromSupabase,
+  syncInventoryItemImmediately,
+  deleteInventoryItemFromSupabase,
+  syncInventoryTransactionImmediately,
+  syncSupplierImmediately,
+  deleteSupplierFromSupabase,
+} from './supabaseSync';
 
 const STORAGE_KEY = 'crm_pro_state_v2';
 
@@ -147,6 +158,13 @@ export class StateService {
         ],
       }));
 
+      // Persist updated user login timestamps
+      const updatedUser = this.state.users.find((u) => u.id === user.id);
+      if (updatedUser) {
+        const { is_active: _, ...row } = updatedUser;
+        syncUserImmediately(row);
+      }
+
       return { user: this.state.users.find((u) => u.id === user.id) || null, error: null };
     } catch (e) {
       return { user: null, error: `Database Error: ${e instanceof Error ? e.message : String(e)}` };
@@ -260,6 +278,11 @@ export class StateService {
           ]
         : prev.activities,
     }));
+
+    // Persist to Supabase immediately
+    const { is_active: _, ...userRow } = user;
+    syncUserImmediately(userRow);
+
     return user;
   }
 
@@ -280,6 +303,12 @@ export class StateService {
           ]
         : prev.activities,
     }));
+
+    const updatedUser = this.state.users.find((u) => u.id === id);
+    if (updatedUser) {
+      const { is_active: _, ...row } = updatedUser;
+      syncUserImmediately(row);
+    }
   }
 
   deleteUser(id: string): void {
@@ -300,6 +329,8 @@ export class StateService {
           ]
         : prev.activities,
     }));
+
+    deleteUserFromSupabase(id);
   }
 
   // ---- Repairs ----
@@ -333,6 +364,9 @@ export class StateService {
           ]
         : prev.activities,
     }));
+
+    // Persist to Supabase immediately
+    syncRepairImmediately(repair);
 
     // Auto-send crm_received WhatsApp message after repair creation
     this.dispatchWhatsAppOnRepairCreated(repair);
@@ -521,6 +555,9 @@ export class StateService {
           ]
         : prev.activities,
     }));
+
+    // Persist updated repair to Supabase immediately
+    syncRepairImmediately(newRec);
   }
 
   /**
@@ -679,6 +716,9 @@ export class StateService {
         ...prev.activities,
       ],
     }));
+
+    // Remove from Supabase immediately
+    deleteRepairFromSupabase(id);
   }
 
   getRepairById(id: string): RepairRecord | undefined {
@@ -845,6 +885,9 @@ export class StateService {
           ]
         : prev.activities,
     }));
+
+    syncInventoryItemImmediately(item);
+
     return item;
   }
 
@@ -868,6 +911,9 @@ export class StateService {
           ]
         : prev.activities,
     }));
+
+    const updatedItem = this.state.inventory.find((i) => i.id === id);
+    if (updatedItem) syncInventoryItemImmediately(updatedItem);
   }
 
   deleteInventoryItem(id: string): void {
@@ -895,6 +941,8 @@ export class StateService {
         ...prev.activities,
       ],
     }));
+
+    deleteInventoryItemFromSupabase(id);
   }
 
   adjustStock(
@@ -968,6 +1016,11 @@ export class StateService {
         : prev.activities,
     }));
 
+    // Persist transaction and updated item immediately
+    syncInventoryTransactionImmediately(tx);
+    const updatedItem = this.state.inventory.find((i) => i.id === itemId);
+    if (updatedItem) syncInventoryItemImmediately(updatedItem);
+
     // Auto restock alert: trigger when quantity drops to or below threshold
     if ((type === 'use' || type === 'adjust') && quantityAfter <= item.min_quantity && quantityBefore > item.min_quantity) {
       const updatedItem = this.state.inventory.find((i) => i.id === itemId);
@@ -1003,6 +1056,9 @@ export class StateService {
           ]
         : prev.activities,
     }));
+
+    syncSupplierImmediately(supplier);
+
     return supplier;
   }
 
@@ -1020,6 +1076,9 @@ export class StateService {
           ]
         : prev.activities,
     }));
+
+    const updatedSupplier = this.state.suppliers.find((s) => s.id === id);
+    if (updatedSupplier) syncSupplierImmediately(updatedSupplier);
   }
 
   deleteSupplier(id: string): void {
@@ -1037,6 +1096,8 @@ export class StateService {
           ]
         : prev.activities,
     }));
+
+    deleteSupplierFromSupabase(id);
   }
 
   getSupplierById(id: string): Supplier | undefined {
