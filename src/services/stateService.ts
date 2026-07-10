@@ -1020,14 +1020,6 @@ export class StateService {
     syncInventoryTransactionImmediately(tx);
     const updatedItem = this.state.inventory.find((i) => i.id === itemId);
     if (updatedItem) syncInventoryItemImmediately(updatedItem);
-
-    // Auto restock alert: trigger when quantity drops to or below threshold
-    if ((type === 'use' || type === 'adjust') && quantityAfter <= item.min_quantity && quantityBefore > item.min_quantity) {
-      const updatedItem = this.state.inventory.find((i) => i.id === itemId);
-      if (updatedItem) {
-        this.dispatchRestockWhatsApp(updatedItem);
-      }
-    }
   }
 
   getTransactionsForItem(itemId: string): InventoryTransaction[] {
@@ -1104,13 +1096,17 @@ export class StateService {
     return this.state.suppliers.find((s) => s.id === id);
   }
 
-  // ---- WhatsApp Restock Trigger ----
+  // ---- Manual Restock Order ----
 
-  private async dispatchRestockWhatsApp(item: InventoryItem): Promise<void> {
+  async sendManualRestockOrder(
+    item: InventoryItem,
+    restockQuantity: number
+  ): Promise<{ success: boolean; error?: string }> {
     try {
-      if (!item.supplier_id) return;
+      if (!item.supplier_id) return { success: false, error: 'No supplier linked to this item.' };
       const supplier = this.state.suppliers.find((s) => s.id === item.supplier_id);
-      if (!supplier || !supplier.phone) return;
+      if (!supplier) return { success: false, error: 'Supplier not found.' };
+      if (!supplier.phone) return { success: false, error: 'Supplier has no phone number.' };
 
       const { supabase } = await import('./supabaseClient');
 
@@ -1120,15 +1116,17 @@ export class StateService {
         .eq('id', 1)
         .maybeSingle();
 
-      if (error || !config || !config.enabled) return;
+      if (error || !config || !config.enabled) {
+        return { success: false, error: 'WhatsApp integration is not enabled.' };
+      }
 
       const logId = `wa_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+      const messageBody = `Hi ${supplier.name}, please prepare ${restockQuantity} units of ${item.name} (SKU: ${item.sku}) for CyGnuS SARL. Thank you.`;
       const variables = [
         supplier.name,
+        String(restockQuantity),
         item.name,
         item.sku,
-        String(item.quantity),
-        String(item.min_quantity),
       ];
 
       await supabase.from('whatsapp_logs').insert({
@@ -1136,11 +1134,28 @@ export class StateService {
         repair_id: `RESTOCK-${item.sku}`,
         customer_name: supplier.name,
         phone: supplier.phone,
-        template_name: 'crm_restock_alert',
+        template_name: 'crm_restock_order',
         variables,
         status: 'queued',
         created_at: nowISO(),
       });
+
+      // Log activity
+      const actor = this.getCurrentUser();
+      this.setState((prev) => ({
+        ...prev,
+        activities: actor
+          ? [
+              {
+                id: generateId('act'),
+                username: actor.username,
+                timestamp: nowISO(),
+                activity: `Sent restock order: ${restockQuantity}x ${item.name} to ${supplier.name}`,
+              },
+              ...prev.activities,
+            ]
+          : prev.activities,
+      }));
 
       if (config.phone_number_id && config.access_token) {
         try {
@@ -1150,9 +1165,10 @@ export class StateService {
             body: JSON.stringify({
               logId,
               phone: supplier.phone,
-              template: 'crm_restock_alert',
+              template: 'crm_restock_order',
               language: config.template_language || 'en_US',
               variables,
+              messageBody,
               config: {
                 phone_number_id: config.phone_number_id,
                 access_token: config.access_token,
@@ -1163,16 +1179,23 @@ export class StateService {
           const data = await response.json();
           if (response.ok && data.success) {
             await supabase.from('whatsapp_logs').update({ status: 'sent', sent_at: nowISO() }).eq('id', logId);
+            return { success: true };
           } else {
-            await supabase.from('whatsapp_logs').update({ status: 'failed', error_message: data.error || 'API error' }).eq('id', logId);
+            const errMsg = data.error || 'API error';
+            await supabase.from('whatsapp_logs').update({ status: 'failed', error_message: errMsg }).eq('id', logId);
+            return { success: false, error: errMsg };
           }
         } catch (err) {
           const msg = err instanceof Error ? err.message : 'Network error';
           await supabase.from('whatsapp_logs').update({ status: 'failed', error_message: msg }).eq('id', logId);
+          return { success: false, error: msg };
         }
       }
+
+      return { success: true };
     } catch (err) {
-      console.warn('[stateService] dispatchRestockWhatsApp error:', err);
+      console.warn('[stateService] sendManualRestockOrder error:', err);
+      return { success: false, error: err instanceof Error ? err.message : 'Unknown error' };
     }
   }
 

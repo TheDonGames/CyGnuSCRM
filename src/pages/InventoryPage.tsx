@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect } from 'react';
-import { Boxes, Plus, Search, AlertTriangle, Package, TrendingDown, DollarSign, CreditCard as Edit2, Trash2, ChevronDown, ArrowDownToLine, ArrowUpFromLine, RefreshCcw, RotateCcw, History, X, Filter } from 'lucide-react';
+import { Boxes, Plus, Search, AlertTriangle, Package, TrendingDown, DollarSign, CreditCard as Edit2, Trash2, ChevronDown, ArrowDownToLine, ArrowUpFromLine, RefreshCcw, RotateCcw, History, X, Filter, Truck } from 'lucide-react';
 import { Modal } from '../components/Modal';
 import { showToast } from '../components/Toast';
 import { useStore } from '../context/StoreContext';
@@ -585,6 +585,124 @@ function TransactionHistoryDrawer({
 }
 
 // ============================================================
+// Restock Order Modal
+// ============================================================
+
+function RestockModal({ item, onClose }: { item: InventoryItem | null; onClose: () => void }) {
+  const { service, state } = useStore();
+  const [quantity, setQuantity] = useState('');
+  const [sending, setSending] = useState(false);
+
+  useEffect(() => {
+    if (item) setQuantity('');
+  }, [item]);
+
+  if (!item) return null;
+
+  const supplier = item.supplier_id
+    ? state.suppliers.find((s) => s.id === item.supplier_id)
+    : null;
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const qty = parseInt(quantity, 10);
+    if (!qty || qty <= 0) return showToast('error', 'Enter a valid quantity');
+
+    setSending(true);
+    const result = await service.sendManualRestockOrder(item, qty);
+    setSending(false);
+
+    if (result.success) {
+      showToast('success', `Restock order sent to ${supplier?.name || 'supplier'}`);
+      onClose();
+    } else {
+      showToast('error', result.error || 'Failed to send restock order');
+    }
+  };
+
+  return (
+    <Modal open={true} onClose={onClose} title="Restock Order" subtitle={item.name} size="sm">
+      <form onSubmit={handleSubmit} className="space-y-5">
+        {/* Item info */}
+        <div className="rounded-lg bg-gray-50 dark:bg-[#0b0f19] border border-gray-100 dark:border-slate-800 p-4 space-y-2">
+          <div className="flex items-center justify-between text-sm">
+            <span className="text-gray-500 dark:text-slate-400">Item</span>
+            <span className="font-medium text-gray-900 dark:text-slate-100">{item.name}</span>
+          </div>
+          <div className="flex items-center justify-between text-sm">
+            <span className="text-gray-500 dark:text-slate-400">SKU</span>
+            <span className="font-mono text-xs bg-gray-100 dark:bg-slate-800 rounded px-1.5 py-0.5 text-gray-600 dark:text-slate-400">{item.sku}</span>
+          </div>
+          <div className="flex items-center justify-between text-sm">
+            <span className="text-gray-500 dark:text-slate-400">Current Stock</span>
+            <span className={`font-semibold ${item.quantity <= item.min_quantity ? 'text-amber-600' : 'text-gray-900 dark:text-slate-100'}`}>
+              {item.quantity} units
+            </span>
+          </div>
+          <div className="flex items-center justify-between text-sm">
+            <span className="text-gray-500 dark:text-slate-400">Supplier</span>
+            <span className="font-medium text-gray-900 dark:text-slate-100">
+              {supplier ? supplier.name : <span className="text-gray-400 italic">Not linked</span>}
+            </span>
+          </div>
+          {supplier?.phone && (
+            <div className="flex items-center justify-between text-sm">
+              <span className="text-gray-500 dark:text-slate-400">Phone</span>
+              <span className="font-mono text-xs text-gray-600 dark:text-slate-400">{supplier.phone}</span>
+            </div>
+          )}
+        </div>
+
+        {/* Quantity input */}
+        <div>
+          <label className="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1.5">
+            Restock Quantity
+          </label>
+          <input
+            type="number"
+            min={1}
+            className="input"
+            value={quantity}
+            onChange={(e) => setQuantity(e.target.value)}
+            placeholder="Enter quantity to order..."
+            autoFocus
+            required
+          />
+          <p className="text-xs text-gray-400 dark:text-slate-500 mt-1.5">
+            A WhatsApp message will be sent to {supplier?.name || 'the supplier'} requesting this quantity.
+          </p>
+        </div>
+
+        {/* Preview */}
+        {quantity && parseInt(quantity, 10) > 0 && supplier && (
+          <div className="rounded-lg border border-emerald-200 dark:border-emerald-900/40 bg-emerald-50 dark:bg-emerald-950/20 p-3">
+            <p className="text-[10px] font-bold uppercase tracking-widest text-emerald-600 dark:text-emerald-400 mb-1">Message Preview</p>
+            <p className="text-sm text-emerald-900 dark:text-emerald-200 leading-relaxed">
+              Hi {supplier.name}, please prepare {parseInt(quantity, 10)} units of {item.name} (SKU: {item.sku}) for CyGnuS SARL. Thank you.
+            </p>
+          </div>
+        )}
+
+        {/* Actions */}
+        <div className="flex justify-end gap-3 pt-2 border-t border-gray-100 dark:border-slate-800">
+          <button type="button" onClick={onClose} className="btn-secondary" disabled={sending}>
+            Cancel
+          </button>
+          <button
+            type="submit"
+            className="btn-primary flex items-center gap-2"
+            disabled={sending || !supplier}
+          >
+            <Truck className="h-4 w-4" />
+            {sending ? 'Sending...' : 'Send Order'}
+          </button>
+        </div>
+      </form>
+    </Modal>
+  );
+}
+
+// ============================================================
 // Main Page
 // ============================================================
 
@@ -601,6 +719,7 @@ export function InventoryPage() {
   const [editingItem, setEditingItem] = useState<InventoryItem | null>(null);
   const [adjustItem, setAdjustItem] = useState<InventoryItem | null>(null);
   const [historyItem, setHistoryItem] = useState<InventoryItem | null>(null);
+  const [restockItem, setRestockItem] = useState<InventoryItem | null>(null);
 
   const inventory = state.inventory;
 
@@ -877,6 +996,18 @@ export function InventoryPage() {
                         <td className="px-4 py-3">
                           <div className="flex items-center gap-1">
                             <button
+                              onClick={() => setRestockItem(item)}
+                              className={`rounded-lg p-1.5 transition-colors ${
+                                item.supplier_id
+                                  ? 'text-gray-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/30 hover:text-emerald-600 dark:hover:text-emerald-400'
+                                  : 'text-gray-300 dark:text-slate-700 cursor-not-allowed'
+                              }`}
+                              title={item.supplier_id ? 'Restock Order' : 'No supplier linked'}
+                              disabled={!item.supplier_id}
+                            >
+                              <Truck className="h-4 w-4" />
+                            </button>
+                            <button
                               onClick={() => setAdjustItem(item)}
                               className="rounded-lg p-1.5 text-gray-400 hover:bg-brand-50 hover:text-brand-600 transition-colors"
                               title="Adjust Stock"
@@ -951,6 +1082,10 @@ export function InventoryPage() {
       <TransactionHistoryDrawer
         item={historyItem}
         onClose={() => setHistoryItem(null)}
+      />
+      <RestockModal
+        item={restockItem}
+        onClose={() => setRestockItem(null)}
       />
     </>
   );
