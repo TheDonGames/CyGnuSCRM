@@ -267,17 +267,16 @@ export function getTemplateForStatus(
 
 /**
  * Generate template variables from repair record.
+ * Meta-approved parameter counts:
+ *  - crm_received: 3 [customer_name, repair_id, status]
+ *  - crm_ready_for_pickup: 3 [customer_name, repair_id, status]
+ *  - crm_cancelled: 2 [customer_name, repair_id]
  */
-export function getTemplateVariables(repair: RepairRecord): string[] {
-  return [
-    repair.customer_name,
-    repair.brand,
-    repair.model,
-    repair.serial || '',
-    repair.repair_id,
-    repair.status,
-    String(repair.price),
-  ];
+export function getTemplateVariables(repair: RepairRecord, templateName?: string): string[] {
+  if (templateName === 'order_cancelled' || templateName === 'crm_cancelled') {
+    return [repair.customer_name, repair.repair_id];
+  }
+  return [repair.customer_name, repair.repair_id, repair.status];
 }
 
 /**
@@ -290,7 +289,7 @@ export async function dispatchWhatsAppMessage(
   config: WhatsAppConfig
 ): Promise<{ success: boolean; log?: WhatsAppLog; error?: string }> {
   const logId = `wa_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-  const variables = getTemplateVariables(repair);
+  const variables = getTemplateVariables(repair, templateName);
 
   // Create log entry with 'queued' status
   const createResult = await createWhatsAppLog({
