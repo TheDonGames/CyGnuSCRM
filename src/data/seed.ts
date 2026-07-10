@@ -393,6 +393,7 @@ export function createSeedState(): AppState {
     autoNotifyRules,
     inventory: buildSeedInventory(),
     inventoryTransactions: buildSeedInventoryTransactions(),
+    suppliers: [],
     currentUserId: null,
   };
 }
@@ -601,6 +602,9 @@ function buildSeedInventory(): InventoryItem[] {
   ];
 
   return items.map((item, idx) => ({
+    supplier_id: '',
+    supplier_warranty_months: 0,
+    purchase_date: null,
     ...item,
     id: `inv_seed${String(idx + 1).padStart(3, '0')}`,
   }));

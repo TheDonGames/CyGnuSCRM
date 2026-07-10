@@ -9,6 +9,7 @@ import type {
   InventoryItem,
   InventoryTransaction,
   InventoryTransactionType,
+  Supplier,
 } from '../types';
 import { createSeedState } from '../data/seed';
 import {
@@ -42,6 +43,14 @@ export function loadState(): AppState {
       // Back-compat: ensure inventory fields exist
       if (!parsed.inventory) parsed.inventory = [];
       if (!parsed.inventoryTransactions) parsed.inventoryTransactions = [];
+      if (!parsed.suppliers) parsed.suppliers = [];
+      // Back-compat: ensure new inventory item fields
+      parsed.inventory = parsed.inventory.map((item: any) => ({
+        supplier_id: '',
+        supplier_warranty_months: 0,
+        purchase_date: null,
+        ...item,
+      }));
       return parsed;
     }
   } catch (e) {
@@ -958,12 +967,152 @@ export class StateService {
           ]
         : prev.activities,
     }));
+
+    // Auto restock alert: trigger when quantity drops to or below threshold
+    if ((type === 'use' || type === 'adjust') && quantityAfter <= item.min_quantity && quantityBefore > item.min_quantity) {
+      const updatedItem = this.state.inventory.find((i) => i.id === itemId);
+      if (updatedItem) {
+        this.dispatchRestockWhatsApp(updatedItem);
+      }
+    }
   }
 
   getTransactionsForItem(itemId: string): InventoryTransaction[] {
     return this.state.inventoryTransactions
       .filter((t) => t.item_id === itemId)
       .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+  }
+
+  // ---- Suppliers ----
+
+  addSupplier(data: Omit<Supplier, 'id' | 'created_at'>): Supplier {
+    const actor = this.getCurrentUser();
+    const now = nowISO();
+    const supplier: Supplier = {
+      ...data,
+      id: generateId('sup'),
+      created_at: now,
+    };
+    this.setState((prev) => ({
+      ...prev,
+      suppliers: [...prev.suppliers, supplier].sort((a, b) => a.name.localeCompare(b.name)),
+      activities: actor
+        ? [
+            { id: generateId('act'), username: actor.username, timestamp: now, activity: `Added supplier: ${supplier.name}` },
+            ...prev.activities,
+          ]
+        : prev.activities,
+    }));
+    return supplier;
+  }
+
+  updateSupplier(id: string, updates: Partial<Supplier>): void {
+    const actor = this.getCurrentUser();
+    this.setState((prev) => ({
+      ...prev,
+      suppliers: prev.suppliers
+        .map((s) => (s.id === id ? { ...s, ...updates } : s))
+        .sort((a, b) => a.name.localeCompare(b.name)),
+      activities: actor
+        ? [
+            { id: generateId('act'), username: actor.username, timestamp: nowISO(), activity: `Updated supplier: ${updates.name || id}` },
+            ...prev.activities,
+          ]
+        : prev.activities,
+    }));
+  }
+
+  deleteSupplier(id: string): void {
+    const actor = this.getCurrentUser();
+    const supplier = this.state.suppliers.find((s) => s.id === id);
+    if (!supplier) return;
+    this.setState((prev) => ({
+      ...prev,
+      suppliers: prev.suppliers.filter((s) => s.id !== id),
+      inventory: prev.inventory.map((item) => item.supplier_id === id ? { ...item, supplier_id: '' } : item),
+      activities: actor
+        ? [
+            { id: generateId('act'), username: actor.username, timestamp: nowISO(), activity: `Deleted supplier: ${supplier.name}` },
+            ...prev.activities,
+          ]
+        : prev.activities,
+    }));
+  }
+
+  getSupplierById(id: string): Supplier | undefined {
+    return this.state.suppliers.find((s) => s.id === id);
+  }
+
+  // ---- WhatsApp Restock Trigger ----
+
+  private async dispatchRestockWhatsApp(item: InventoryItem): Promise<void> {
+    try {
+      if (!item.supplier_id) return;
+      const supplier = this.state.suppliers.find((s) => s.id === item.supplier_id);
+      if (!supplier || !supplier.phone) return;
+
+      const { supabase } = await import('./supabaseClient');
+
+      const { data: config, error } = await supabase
+        .from('whatsapp_config')
+        .select('*')
+        .eq('id', 1)
+        .maybeSingle();
+
+      if (error || !config || !config.enabled) return;
+
+      const logId = `wa_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+      const variables = [
+        supplier.name,
+        item.name,
+        item.sku,
+        String(item.quantity),
+        String(item.min_quantity),
+      ];
+
+      await supabase.from('whatsapp_logs').insert({
+        id: logId,
+        repair_id: `RESTOCK-${item.sku}`,
+        customer_name: supplier.name,
+        phone: supplier.phone,
+        template_name: 'crm_restock_alert',
+        variables,
+        status: 'queued',
+        created_at: nowISO(),
+      });
+
+      if (config.phone_number_id && config.access_token) {
+        try {
+          const response = await fetch(getApiEndpoint('/api/whatsapp/send'), {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              logId,
+              phone: supplier.phone,
+              template: 'crm_restock_alert',
+              language: config.template_language || 'en_US',
+              variables,
+              config: {
+                phone_number_id: config.phone_number_id,
+                access_token: config.access_token,
+                api_version: config.api_version || 'v22.0',
+              },
+            }),
+          });
+          const data = await response.json();
+          if (response.ok && data.success) {
+            await supabase.from('whatsapp_logs').update({ status: 'sent', sent_at: nowISO() }).eq('id', logId);
+          } else {
+            await supabase.from('whatsapp_logs').update({ status: 'failed', error_message: data.error || 'API error' }).eq('id', logId);
+          }
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : 'Network error';
+          await supabase.from('whatsapp_logs').update({ status: 'failed', error_message: msg }).eq('id', logId);
+        }
+      }
+    } catch (err) {
+      console.warn('[stateService] dispatchRestockWhatsApp error:', err);
+    }
   }
 
   // ---- Reset ----

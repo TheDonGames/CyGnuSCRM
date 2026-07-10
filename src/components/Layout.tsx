@@ -1,5 +1,5 @@
 import { useState, useEffect, type ReactNode } from 'react';
-import { LayoutDashboard, Wrench, Users, CircleUser as UserCircle, Smartphone, FileText, ShieldCheck, Boxes, MessageCircle, Bell, Send, ScrollText, Activity, Settings, LogOut, Menu, X, ChevronLeft, ChevronRight, RefreshCw, Lock, CircleDot, Clock, Sun, Moon } from 'lucide-react';
+import { LayoutDashboard, Wrench, Users, CircleUser as UserCircle, Smartphone, FileText, ShieldCheck, Boxes, MessageCircle, Bell, Send, ScrollText, Activity, Settings, LogOut, Menu, X, ChevronLeft, ChevronRight, RefreshCw, Lock, CircleDot, Clock, Sun, Moon, Truck } from 'lucide-react';
 import { useStore } from '../context/StoreContext';
 import { useTheme } from '../context/ThemeContext';
 import { isUserActive, formatTimeAgo } from '../utils/helpers';
@@ -17,6 +17,7 @@ export type PageKey =
   | 'invoices'
   | 'warranty'
   | 'inventory'
+  | 'suppliers'
   | 'whatsapp'
   | 'rules'
   | 'notifications'
@@ -58,6 +59,7 @@ const NAV_CATEGORIES: NavCategory[] = [
       { key: 'invoices', label: 'Invoices Hub', icon: <FileText className="h-5 w-5" />, adminOnly: true },
       { key: 'warranty', label: 'Warranty Status', icon: <ShieldCheck className="h-5 w-5" /> },
       { key: 'inventory', label: 'Inventory / Stock', icon: <Boxes className="h-5 w-5" /> },
+      { key: 'suppliers', label: 'Suppliers', icon: <Truck className="h-5 w-5" /> },
     ],
   },
   {

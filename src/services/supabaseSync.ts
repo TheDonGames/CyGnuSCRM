@@ -19,6 +19,7 @@ import type {
   AutoNotifyRule,
   InventoryItem,
   InventoryTransaction,
+  Supplier,
 } from '../types';
 
 // ============================================================
@@ -63,6 +64,7 @@ export async function loadFromSupabase(): Promise<Partial<AppState> | null> {
       configRes,
       inventoryRes,
       txRes,
+      suppliersRes,
     ] = await Promise.all([
       supabase.from('users').select('*'),
       supabase.from('repairs').select('*').order('created_at', { ascending: false }),
@@ -73,6 +75,7 @@ export async function loadFromSupabase(): Promise<Partial<AppState> | null> {
       supabase.from('system_config').select('config_json').eq('id', 1).maybeSingle(),
       supabase.from('inventory_items').select('*').order('name'),
       supabase.from('inventory_transactions').select('*').order('created_at', { ascending: false }).limit(1000),
+      supabase.from('suppliers').select('*').order('name'),
     ]);
 
     // If the tables don't exist yet, all queries will error — treat as unconfigured
@@ -138,6 +141,10 @@ export async function loadFromSupabase(): Promise<Partial<AppState> | null> {
 
     if (txRes.data?.length) {
       partial.inventoryTransactions = txRes.data as InventoryTransaction[];
+    }
+
+    if (suppliersRes.data?.length) {
+      partial.suppliers = suppliersRes.data as Supplier[];
     }
 
     return partial;
@@ -209,6 +216,13 @@ export async function syncInventoryTransactionsToSupabase(
   await safeUpsert('inventory_transactions', txs.slice(0, 500));
 }
 
+export async function syncSuppliersToSupabase(
+  suppliers: Supplier[]
+): Promise<void> {
+  if (!isSupabaseConfigured() || suppliers.length === 0) return;
+  await safeUpsert('suppliers', suppliers);
+}
+
 // ============================================================
 // Full-state sync (debounced by caller)
 // Returns true when all writes succeed, false if any fail.
@@ -227,6 +241,7 @@ export async function syncStateToSupabase(state: AppState): Promise<boolean> {
       syncConfigToSupabase(state.config),
       syncInventoryItemsToSupabase(state.inventory),
       syncInventoryTransactionsToSupabase(state.inventoryTransactions),
+      syncSuppliersToSupabase(state.suppliers),
     ]);
     return results.every(Boolean);
   } catch (err) {

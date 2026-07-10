@@ -139,6 +139,16 @@ export const INVENTORY_CATEGORIES: InventoryCategory[] = [
 
 export type InventoryTransactionType = 'receive' | 'use' | 'adjust' | 'return';
 
+export interface Supplier {
+  id: string;
+  name: string;
+  phone: string;
+  email: string;
+  website: string;
+  address: string;
+  created_at: string;
+}
+
 export interface InventoryItem {
   id: string;
   sku: string;
@@ -149,6 +159,9 @@ export interface InventoryItem {
   min_quantity: number;       // low-stock threshold
   unit_price: number;
   supplier: string;
+  supplier_id: string;        // FK to suppliers table
+  supplier_warranty_months: number;
+  purchase_date: string | null;
   location: string;           // shelf/bin e.g. "A-01"
   created_at: string;
   updated_at: string;
@@ -269,5 +282,6 @@ export interface AppState {
   autoNotifyRules: AutoNotifyRule[];
   inventory: InventoryItem[];
   inventoryTransactions: InventoryTransaction[];
+  suppliers: Supplier[];
   currentUserId: string | null;   // logged-in user (client-side only)
 }

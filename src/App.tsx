@@ -19,6 +19,7 @@ import { NotificationsPage } from './pages/NotificationsPage';
 import { AutomationRulesPage } from './pages/AutomationRulesPage';
 import { SettingsPage } from './pages/SettingsPage';
 import { InventoryPage } from './pages/InventoryPage';
+import { SuppliersPage } from './pages/SuppliersPage';
 import type { PageKey } from './components/Layout';
 
 function AppContent() {
@@ -52,6 +53,8 @@ function AppContent() {
         return <WarrantyPage />;
       case 'inventory':
         return <InventoryPage />;
+      case 'suppliers':
+        return <SuppliersPage />;
       case 'whatsapp':
         return <WhatsAppWorkspacePage />;
       case 'users':

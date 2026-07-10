@@ -60,6 +60,9 @@ const EMPTY_ITEM_FORM = {
   min_quantity: 1,
   unit_price: 0,
   supplier: '',
+  supplier_id: '',
+  supplier_warranty_months: 0,
+  purchase_date: '',
   location: '',
 };
 
@@ -77,7 +80,7 @@ const DK_INPUT =
 const DK_LABEL = 'block text-[11px] font-semibold uppercase tracking-wider text-gray-500 dark:text-slate-400 mb-1.5';
 
 function ItemFormDrawer({ open, onClose, editing }: ItemFormDrawerProps) {
-  const { service } = useStore();
+  const { service, state } = useStore();
   const [form, setForm] = useState(EMPTY_ITEM_FORM);
 
   // Sync form state whenever the target item or open state changes
@@ -92,6 +95,9 @@ function ItemFormDrawer({ open, onClose, editing }: ItemFormDrawerProps) {
         min_quantity: editing.min_quantity,
         unit_price: editing.unit_price,
         supplier: editing.supplier,
+        supplier_id: editing.supplier_id || '',
+        supplier_warranty_months: editing.supplier_warranty_months || 0,
+        purchase_date: editing.purchase_date || '',
         location: editing.location,
       });
     } else {
@@ -115,21 +121,20 @@ function ItemFormDrawer({ open, onClose, editing }: ItemFormDrawerProps) {
     if (!form.sku.trim()) return showToast('error', 'SKU is required');
     if (!form.name.trim()) return showToast('error', 'Name is required');
 
+    const payload = {
+      ...form,
+      quantity: Number(form.quantity),
+      min_quantity: Number(form.min_quantity),
+      unit_price: Number(form.unit_price),
+      supplier_warranty_months: Number(form.supplier_warranty_months),
+      purchase_date: form.purchase_date || null,
+    };
+
     if (editing) {
-      service.updateInventoryItem(editing.id, {
-        ...form,
-        quantity: Number(form.quantity),
-        min_quantity: Number(form.min_quantity),
-        unit_price: Number(form.unit_price),
-      });
+      service.updateInventoryItem(editing.id, payload);
       showToast('success', `${form.name} updated`);
     } else {
-      service.addInventoryItem({
-        ...form,
-        quantity: Number(form.quantity),
-        min_quantity: Number(form.min_quantity),
-        unit_price: Number(form.unit_price),
-      });
+      service.addInventoryItem(payload);
       showToast('success', `${form.name} added to inventory`);
     }
     onClose();
@@ -283,11 +288,40 @@ function ItemFormDrawer({ open, onClose, editing }: ItemFormDrawerProps) {
               </div>
               <div className="col-span-2">
                 <label className={DK_LABEL}>Supplier</label>
+                <select
+                  className={DK_INPUT + ' appearance-none cursor-pointer'}
+                  value={form.supplier_id}
+                  onChange={(e) => {
+                    const sid = e.target.value;
+                    const supplier = state.suppliers.find((s) => s.id === sid);
+                    set('supplier_id', sid);
+                    set('supplier', supplier ? supplier.name : '');
+                  }}
+                >
+                  <option value="">-- Select Supplier --</option>
+                  {state.suppliers.map((s) => (
+                    <option key={s.id} value={s.id}>{s.name}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className={DK_LABEL}>Warranty (months)</label>
                 <input
+                  type="number"
+                  min={0}
                   className={DK_INPUT}
-                  value={form.supplier}
-                  onChange={(e) => set('supplier', e.target.value)}
-                  placeholder="iFixit Wholesale"
+                  value={form.supplier_warranty_months}
+                  onChange={(e) => set('supplier_warranty_months', e.target.value)}
+                  placeholder="0"
+                />
+              </div>
+              <div>
+                <label className={DK_LABEL}>Purchase Date</label>
+                <input
+                  type="date"
+                  className={DK_INPUT}
+                  value={form.purchase_date}
+                  onChange={(e) => set('purchase_date', e.target.value)}
                 />
               </div>
             </div>
